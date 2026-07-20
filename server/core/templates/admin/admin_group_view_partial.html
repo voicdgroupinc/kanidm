@@ -84,6 +84,15 @@ let can_modify_any_attr = scim_effective_access.modify_present.check_any(
         </ol>
     (% endif %)
 
+(% if can_rw %)
+<form class="mt-4"
+      hx-post="/ui/api/admin/group/(( group.uuid ))/delete"
+      hx-confirm="Delete group (( group.name ))? This cannot be undone."
+      hx-target=".toast-container"
+      hx-swap="beforeend">
+    <button type="submit" class="btn btn-danger">Delete group</button>
+</form>
+(% endif %)
 
 <div id="toast-container" class="toast-container position-fixed bottom-0 end-0 p-3">
 </div>

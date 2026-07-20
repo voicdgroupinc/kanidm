@@ -12,17 +12,18 @@ use axum::extract::{Path, State};
 use axum::response::{IntoResponse, Response};
 use axum::Extension;
 use axum_extra::extract::Form;
-use axum_htmx::{HxPushUrl, HxRequest};
+use axum_htmx::{HxLocation, HxPushUrl, HxRequest};
 use futures_util::TryFutureExt;
 use kanidm_proto::attribute::Attribute;
-use kanidm_proto::internal::{OperationError, UserAuthToken};
+use kanidm_proto::internal::{CreateRequest, OperationError, UserAuthToken};
 use kanidm_proto::scim_v1::server::{
     ScimEffectiveAccess, ScimEntryKanidm, ScimGroup, ScimListResponse, ScimValueKanidm,
 };
 use kanidm_proto::scim_v1::ScimEntryGetQuery;
 use kanidm_proto::scim_v1::{client::ScimEntryPutKanidm, ScimFilter};
+use kanidm_proto::v1::Entry as ProtoEntry;
 use kanidmd_lib::constants::EntryClass;
-use kanidmd_lib::filter::{f_eq, Filter};
+use kanidmd_lib::filter::{f_eq, f_id, Filter};
 use kanidmd_lib::idm::authentication::ClientAuthInfo;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -80,6 +81,19 @@ struct GroupMemberEntryResponse {
 #[derive(Template, WebTemplate)]
 #[template(path = "admin/saved_toast.html")]
 struct SavedToast {}
+
+#[derive(Template, WebTemplate)]
+#[template(path = "admin/admin_panel_template.html")]
+struct GroupCreateView {
+    navbar_ctx: NavbarCtx,
+    partial: GroupCreatePartial,
+}
+
+#[derive(Template, WebTemplate)]
+#[template(path = "admin/admin_group_create_partial.html")]
+struct GroupCreatePartial {
+    can_rw: bool,
+}
 
 pub(crate) async fn view_group_view_get(
     State(state): State<ServerState>,
@@ -146,6 +160,99 @@ pub(crate) async fn view_groups_get(
         )
             .into_response()
     })
+}
+
+pub(crate) async fn view_group_create_get(
+    HxRequest(is_htmx): HxRequest,
+    Extension(kopid): Extension<KOpId>,
+    VerifiedClientInformation(client_auth_info): VerifiedClientInformation,
+    DomainInfo(domain_info): DomainInfo,
+) -> axum::response::Result<Response> {
+    let uat: &UserAuthToken = client_auth_info
+        .pre_validated_uat()
+        .map_err(|op_err| HtmxError::new(&kopid, op_err, domain_info.clone()))?;
+    let can_rw = uat_privileges_active(uat);
+    let partial = GroupCreatePartial { can_rw };
+    let push_url = HxPushUrl("/ui/admin/groups/create".to_string());
+    Ok(if is_htmx {
+        (push_url, partial).into_response()
+    } else {
+        (
+            push_url,
+            GroupCreateView {
+                navbar_ctx: NavbarCtx::new(domain_info, &uat.ui_hints),
+                partial,
+            },
+        )
+            .into_response()
+    })
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub(crate) struct CreateGroupForm {
+    name: String,
+    description: Option<String>,
+}
+
+pub(crate) async fn create_group(
+    State(state): State<ServerState>,
+    Extension(kopid): Extension<KOpId>,
+    VerifiedClientInformation(client_auth_info): VerifiedClientInformation,
+    // Form must be the last parameter because it consumes the request body
+    Form(query): Form<CreateGroupForm>,
+) -> axum::response::Result<Response> {
+    let mut attrs: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    attrs.insert(Attribute::Name.to_string(), vec![query.name]);
+    // axum deserializes an empty field to None, so a present-but-empty description is skipped.
+    if let Some(description) = query.description.filter(|d| !d.is_empty()) {
+        attrs.insert(Attribute::Description.to_string(), vec![description]);
+    }
+    let classes: Vec<String> = vec![EntryClass::Group.into(), EntryClass::Object.into()];
+    attrs.insert(Attribute::Class.to_string(), classes);
+
+    let msg = CreateRequest {
+        entries: vec![ProtoEntry { attrs }],
+    };
+
+    match state
+        .qe_w_ref
+        .handle_create(client_auth_info.clone(), msg, kopid.eventid)
+        .await
+    {
+        // On success, send the browser back to the groups list.
+        Ok(()) => Ok((HxLocation::from(Urls::AdminGroups.as_ref()), "").into_response()),
+        Err(err_code) => Ok((ErrorToastPartial {
+            err_code,
+            operation_id: kopid.eventid,
+        })
+        .into_response()),
+    }
+}
+
+pub(crate) async fn delete_group(
+    State(state): State<ServerState>,
+    Extension(kopid): Extension<KOpId>,
+    VerifiedClientInformation(client_auth_info): VerifiedClientInformation,
+    Path(group_uuid): Path<Uuid>,
+) -> axum::response::Result<Response> {
+    let filter = Filter::join_parts_and(
+        filter_all!(f_eq(Attribute::Class, EntryClass::Group.into())),
+        filter_all!(f_id(group_uuid.to_string().as_str())),
+    );
+
+    match state
+        .qe_w_ref
+        .handle_internaldelete(client_auth_info.clone(), filter, kopid.eventid)
+        .await
+    {
+        // The viewed entry is gone; send the browser back to the groups list.
+        Ok(()) => Ok((HxLocation::from(Urls::AdminGroups.as_ref()), "").into_response()),
+        Err(err_code) => Ok((ErrorToastPartial {
+            err_code,
+            operation_id: kopid.eventid,
+        })
+        .into_response()),
+    }
 }
 
 pub async fn get_group_info(

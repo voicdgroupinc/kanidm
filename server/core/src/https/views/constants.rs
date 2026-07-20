@@ -36,6 +36,7 @@ pub(crate) enum Urls {
     Radius,
     Recover,
     Admin,
+    AdminGroups,
 }
 
 impl AsRef<str> for Urls {
@@ -54,6 +55,7 @@ impl AsRef<str> for Urls {
             Self::Radius => "/ui/radius",
             Self::Recover => "/ui/recover",
             Self::Admin => "/ui/admin/persons",
+            Self::AdminGroups => "/ui/admin/groups",
         }
     }
 }
