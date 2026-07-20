@@ -47,6 +47,10 @@ pub(crate) struct GroupsView {
 #[template(path = "admin/admin_groups_partial.html")]
 struct GroupsPartialView {
     groups: Vec<(ScimGroup, ScimEffectiveAccess)>,
+    // True when the viewer may delete groups (i.e. is a group-admin), which in
+    // Kanidm's default ACPs is granted together with create. Used to hide the
+    // "Create group" button from non-admins; the create itself is ACP-enforced.
+    can_create: bool,
 }
 
 #[derive(Template, WebTemplate)]
@@ -142,7 +146,11 @@ pub(crate) async fn view_groups_get(
     VerifiedClientInformation(client_auth_info): VerifiedClientInformation,
 ) -> axum::response::Result<Response> {
     let groups = get_groups_info(state, &kopid, client_auth_info.clone()).await?;
-    let groups_partial = GroupsPartialView { groups };
+    let can_create = groups.iter().any(|(_, access)| access.delete);
+    let groups_partial = GroupsPartialView {
+        groups,
+        can_create,
+    };
     let uat: &UserAuthToken = client_auth_info
         .pre_validated_uat()
         .map_err(|op_err| HtmxError::new(&kopid, op_err, domain_info.clone()))?;
