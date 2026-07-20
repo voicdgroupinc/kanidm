@@ -51,6 +51,10 @@ pub(crate) struct PersonsView {
 #[template(path = "admin/admin_persons_partial.html")]
 struct PersonsPartialView {
     persons: Vec<(ScimPerson, ScimEffectiveAccess)>,
+    // True when the viewer may delete persons (i.e. is a people-admin), which in
+    // Kanidm's default ACPs is granted together with create. Used to hide the
+    // "Create person" button from non-admins; the create itself is ACP-enforced.
+    can_create: bool,
 }
 
 #[derive(Template, WebTemplate)]
@@ -123,7 +127,11 @@ pub(crate) async fn view_persons_get(
     VerifiedClientInformation(client_auth_info): VerifiedClientInformation,
 ) -> axum::response::Result<Response> {
     let persons = get_persons_info(state, &kopid, client_auth_info.clone()).await?;
-    let persons_partial = PersonsPartialView { persons };
+    let can_create = persons.iter().any(|(_, access)| access.delete);
+    let persons_partial = PersonsPartialView {
+        persons,
+        can_create,
+    };
     let uat: &UserAuthToken = client_auth_info
         .pre_validated_uat()
         .map_err(|op_err| HtmxError::new(&kopid, op_err, domain_info.clone()))?;

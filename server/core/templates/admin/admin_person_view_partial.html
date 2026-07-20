@@ -10,7 +10,7 @@
     </ol>
 </nav>
 
-(% if can_rw %)
+(% if can_rw && scim_effective_access.delete %)
 <form class="mb-3"
       hx-post="/ui/api/admin/person/(( person.uuid ))/delete"
       hx-confirm="Delete person (( person.spn ))? This cannot be undone."

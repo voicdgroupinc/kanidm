@@ -9,7 +9,9 @@
     </ol>
 </nav>
 
+(% if can_create %)
 <a href="/ui/admin/persons/create" hx-target="#main" class="btn btn-primary mb-3">＋ Create person</a>
+(% endif %)
 
 <table class="table table-striped">
     <thead>

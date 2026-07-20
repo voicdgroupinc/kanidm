@@ -80,7 +80,7 @@
     </ol>
 (% endif %)
 
-(% if can_rw %)
+(% if can_rw && scim_effective_access.delete %)
 <form class="mt-4"
       hx-post="/ui/api/admin/group/(( group.uuid ))/delete"
       hx-confirm="Delete group (( group.name ))? This cannot be undone."
