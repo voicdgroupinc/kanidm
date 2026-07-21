@@ -88,6 +88,8 @@ struct PersonViewPartial {
     valid_from_input: Option<String>,
     can_edit_validity: bool,
     can_edit_ssh: bool,
+    // Group names the person is NOT already a member of, for the "Add to group" dropdown.
+    addable_groups: Vec<String>,
 }
 
 #[derive(Template, WebTemplate)]
@@ -122,7 +124,7 @@ pub(crate) async fn view_person_view_get(
     DomainInfo(domain_info): DomainInfo,
 ) -> axum::response::Result<Response> {
     let (person, scim_effective_access) =
-        get_person_info(uuid, state, &kopid, client_auth_info.clone()).await?;
+        get_person_info(uuid, state.clone(), &kopid, client_auth_info.clone()).await?;
     let uat: &UserAuthToken = client_auth_info
         .pre_validated_uat()
         .map_err(|op_err| HtmxError::new(&kopid, op_err, domain_info.clone()))?;
@@ -143,6 +145,16 @@ pub(crate) async fn view_person_view_get(
     let can_edit_ssh =
         can_rw && scim_effective_access.modify_present.check(&Attribute::SshPublicKey);
 
+    // Build the add-to-group dropdown: all groups minus the ones already joined.
+    let member_uuids: std::collections::BTreeSet<Uuid> =
+        person.groups.iter().map(|g| g.uuid).collect();
+    let addable_groups: Vec<String> = list_all_groups(&state, &kopid, &client_auth_info)
+        .await
+        .into_iter()
+        .filter(|(uuid, _)| !member_uuids.contains(uuid))
+        .map(|(_, name)| name)
+        .collect();
+
     let person_partial = PersonViewPartial {
         person,
         scim_effective_access,
@@ -153,6 +165,7 @@ pub(crate) async fn view_person_view_get(
         valid_from_input,
         can_edit_validity,
         can_edit_ssh,
+        addable_groups,
     };
     let push_url = HxPushUrl(format!("/ui/admin/person/{uuid}/view"));
     Ok(if is_htmx {
@@ -919,6 +932,40 @@ async fn get_persons_info(
         .collect();
 
     Ok((persons, total))
+}
+
+// List all group (uuid, name) pairs the caller can see, for the add-to-group dropdown.
+async fn list_all_groups(
+    state: &ServerState,
+    kopid: &KOpId,
+    client_auth_info: &ClientAuthInfo,
+) -> Vec<(Uuid, String)> {
+    let filter = ScimFilter::Equal(Attribute::Class.into(), EntryClass::Group.into());
+    let res = state
+        .qe_r_ref
+        .scim_entry_search(
+            client_auth_info.clone(),
+            kopid.eventid,
+            filter,
+            ScimEntryGetQuery {
+                attributes: Some(vec![Attribute::Name]),
+                sort_by: Some(Attribute::Name),
+                count: NonZeroU64::new(1000),
+                ..Default::default()
+            },
+        )
+        .await;
+    match res {
+        Ok(base) => base
+            .resources
+            .iter()
+            .filter_map(|e| match e.attrs.get(&Attribute::Name) {
+                Some(ScimValueKanidm::String(name)) => Some((e.header.id, name.clone())),
+                _ => None,
+            })
+            .collect(),
+        Err(_) => Vec::new(),
+    }
 }
 
 fn scimentry_into_personinfo(
