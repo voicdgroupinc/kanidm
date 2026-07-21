@@ -29,6 +29,8 @@
     </ol>
 </nav>
 
+(% include "admin/admin_unlock_banner.html" %)
+
 <form id="user_settings_container" class="needs-validation"
       hx-post="/ui/api/admin/group/(( group.uuid ))"
       hx-swap="beforeend"
