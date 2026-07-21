@@ -10,56 +10,251 @@
     </ol>
 </nav>
 
-(% if can_rw && scim_effective_access.delete %)
-<form class="mb-3"
-      hx-post="/ui/api/admin/person/(( person.uuid ))/delete"
-      hx-confirm="Delete person (( person.spn ))? This cannot be undone."
-      hx-target=".toast-container"
-      hx-swap="beforeend">
-    <button type="submit" class="btn btn-danger">Delete person</button>
-</form>
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h3 class="mb-0">
+        (( person.displayname ))
+        <span class="badge (( account_status_class )) align-middle">(( account_status ))</span>
+    </h3>
+    <span class="text-body-secondary">(( person.spn ))</span>
+</div>
+
+<div class="card mb-3 col-12 col-md-10 col-lg-8">
+    <div class="card-body">
+        <h5 class="card-title">Identity</h5>
+        (% include "admin_person_details_partial.html" %)
+    </div>
+</div>
+
+<div class="card mb-3 col-12 col-md-10 col-lg-8">
+    <div class="card-body">
+        <h5 class="card-title d-flex align-items-center gap-2">
+            Account status
+            <span class="badge (( account_status_class ))">(( account_status ))</span>
+        </h5>
+
+        (% if can_edit_validity %)
+        <div class="row g-3 align-items-end mt-1">
+            <div class="col-12 col-md-6">
+                <form hx-post="/ui/api/admin/person/(( person.uuid ))/set_valid_from"
+                      hx-target=".toast-container" hx-swap="beforeend">
+                    <label class="form-label fw-bold" for="valid_from">Valid from
+                        <span class="fw-normal text-body-secondary">(UTC)</span></label>
+                    <div class="input-group">
+                        <input type="datetime-local" class="form-control" id="valid_from" name="datetime"
+                               value="(( valid_from_input.as_deref().unwrap_or_default() ))">
+                        <button class="btn btn-primary" type="submit">Set</button>
+                    </div>
+                </form>
+                (% if valid_from_input.is_some() %)
+                <form class="mt-1" hx-post="/ui/api/admin/person/(( person.uuid ))/clear_valid_from"
+                      hx-target=".toast-container" hx-swap="beforeend">
+                    <button class="btn btn-link btn-sm p-0" type="submit">Clear valid-from</button>
+                </form>
+                (% endif %)
+            </div>
+
+            <div class="col-12 col-md-6">
+                <form hx-post="/ui/api/admin/person/(( person.uuid ))/set_expire"
+                      hx-target=".toast-container" hx-swap="beforeend">
+                    <label class="form-label fw-bold" for="expire">Expires
+                        <span class="fw-normal text-body-secondary">(UTC)</span></label>
+                    <div class="input-group">
+                        <input type="datetime-local" class="form-control" id="expire" name="datetime"
+                               value="(( expire_input.as_deref().unwrap_or_default() ))">
+                        <button class="btn btn-primary" type="submit">Set</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div class="d-flex flex-wrap gap-2 mt-3">
+            (% if account_status == "Disabled" %)
+            <form hx-post="/ui/api/admin/person/(( person.uuid ))/enable"
+                  hx-target=".toast-container" hx-swap="beforeend">
+                <button class="btn btn-success" type="submit">Enable account</button>
+            </form>
+            (% else %)
+            <form hx-post="/ui/api/admin/person/(( person.uuid ))/disable"
+                  hx-confirm="Disable (( person.spn )) now? They will be unable to sign in."
+                  hx-target=".toast-container" hx-swap="beforeend">
+                <button class="btn btn-warning" type="submit">Disable account</button>
+            </form>
+            (% endif %)
+            <form hx-post="/ui/api/admin/person/(( person.uuid ))/clear_lockout"
+                  hx-target=".toast-container" hx-swap="beforeend">
+                <button class="btn btn-secondary" type="submit">Clear login lockout</button>
+            </form>
+        </div>
+        (% else %)
+        <p class="mb-0 text-body-secondary">Unlock your session to manage account validity.</p>
+        (% endif %)
+    </div>
+</div>
+
+(% if can_rw %)
+<div class="card mb-3 col-12 col-md-10 col-lg-8">
+    <div class="card-body">
+        <h5 class="card-title">Credentials</h5>
+        <p class="text-body-secondary">Generate a self-service reset link the user opens to set
+            their own password or passkey.</p>
+        <form hx-post="/ui/api/admin/person/(( person.uuid ))/reset_link"
+              hx-target="#reset-link-target"
+              hx-swap="innerHTML"
+              hx-disabled-elt="find button">
+            <button class="btn btn-primary" type="submit">Generate password-reset link</button>
+        </form>
+        <div id="reset-link-target"></div>
+    </div>
+</div>
 (% endif %)
 
-(% include "admin_person_details_partial.html" %)
-
-<hr>
-
 (% if scim_effective_access.search.check(&Attribute::Mail) %)
-<label class="mt-3 fw-bold">Emails</label>
-<form hx-validate="true" hx-ext="bs-validation">
-    (% if person.mails.len() == 0 %)
-    <p>There are no email addresses associated with this person.</p>
-    (% else %)
-    <ol class="list-group col-12 col-md-8 col-lg-6">
-        (% for mail in person.mails %)
-        <li id="personMail(( loop.index ))" class="list-group-item d-flex flex-row justify-content-between">
-            <div class="d-flex align-items-center">(( mail.value ))</div>
-            <div class="buttons float-end">
+(% let can_edit_mail = can_rw && scim_effective_access.modify_present.check(&Attribute::Mail) %)
+<div class="card mb-3 col-12 col-md-10 col-lg-8">
+    <div class="card-body">
+        <h5 class="card-title">Emails</h5>
+        (% if can_edit_mail %)
+        <form class="mb-2"
+              hx-post="/ui/api/admin/person/(( person.uuid ))/add_mail"
+              hx-target=".toast-container"
+              hx-swap="beforeend"
+              hx-validate="true"
+              hx-ext="bs-validation"
+              novalidate>
+            <div class="input-group">
+                <input type="email" class="form-control" name="mail" required
+                       autocomplete="off" placeholder="name@example.com"
+                       aria-label="Email address to add">
+                <button class="btn btn-primary" type="submit">Add email</button>
             </div>
-        </li>
-        (% endfor %)
-    </ol>
-    (% endif %)
-</form>
+        </form>
+        (% endif %)
+        (% if person.mails.len() == 0 %)
+        <p class="mb-0 text-body-secondary">No email addresses.</p>
+        (% else %)
+        <ol class="list-group">
+            (% for mail in person.mails %)
+            <li class="list-group-item d-flex flex-row justify-content-between align-items-center">
+                <div>(( mail.value ))(% if loop.first %) <span class="badge text-bg-secondary">primary</span>(% endif %)</div>
+                (% if can_edit_mail %)
+                <form hx-post="/ui/api/admin/person/(( person.uuid ))/remove_mail"
+                      hx-confirm="Remove email (( mail.value ))?"
+                      hx-target=".toast-container"
+                      hx-swap="beforeend">
+                    <input type="hidden" name="mail" value="(( mail.value ))">
+                    <button type="submit" class="btn btn-secondary btn-sm kanidm-remove-list-entry">Remove</button>
+                </form>
+                (% endif %)
+            </li>
+            (% endfor %)
+        </ol>
+        (% endif %)
+    </div>
+</div>
 (% endif %)
 
 (% if scim_effective_access.search.check(&Attribute::DirectMemberOf) %)
-<label class="mt-3 fw-bold">DirectMemberOf</label>
-<form hx-validate="true" hx-ext="bs-validation">
-    (% if person.groups.len() == 0 %)
-    <p>There are no groups this person is a direct member of.</p>
-    (% else %)
-    <ol class="list-group col-12 col-md-8 col-lg-6">
-        (% for group in person.groups %)
-        <li id="personGroup(( loop.index ))" class="list-group-item d-flex flex-row justify-content-between">
-            <div class="d-flex align-items-center">(( group.value ))</div>
-            <div class="buttons float-end">
+<div class="card mb-3 col-12 col-md-10 col-lg-8">
+    <div class="card-body">
+        <h5 class="card-title">Groups</h5>
+        (% if can_rw %)
+        <form class="mb-2"
+              hx-post="/ui/api/admin/person/(( person.uuid ))/add_group"
+              hx-target=".toast-container"
+              hx-swap="beforeend">
+            <div class="input-group">
+                <input type="text" class="form-control" name="group" required
+                       autocomplete="off" placeholder="group name or uuid"
+                       aria-label="Group to add this person to">
+                <button class="btn btn-primary" type="submit">Add to group</button>
             </div>
-        </li>
-        (% endfor %)
-    </ol>
-    (% endif %)
-</form>
+        </form>
+        (% endif %)
+        (% if person.groups.len() == 0 %)
+        <p class="mb-0 text-body-secondary">Not a direct member of any group.</p>
+        (% else %)
+        <ol class="list-group">
+            (% for group in person.groups %)
+            <li class="list-group-item d-flex flex-row justify-content-between align-items-center">
+                <div><a href="/ui/admin/group/(( group.uuid ))/view" hx-target="#main">(( group.value ))</a></div>
+                (% if can_rw %)
+                <form hx-post="/ui/api/admin/person/(( person.uuid ))/remove_group"
+                      hx-confirm="Remove (( person.spn )) from (( group.value ))?"
+                      hx-target=".toast-container"
+                      hx-swap="beforeend">
+                    <input type="hidden" name="group" value="(( group.uuid ))">
+                    <button type="submit" class="btn btn-secondary btn-sm kanidm-remove-list-entry">Remove</button>
+                </form>
+                (% endif %)
+            </li>
+            (% endfor %)
+        </ol>
+        (% endif %)
+    </div>
+</div>
+(% endif %)
+
+(% if scim_effective_access.search.check(&Attribute::SshPublicKey) %)
+<div class="card mb-3 col-12 col-md-10 col-lg-8">
+    <div class="card-body">
+        <h5 class="card-title">SSH public keys</h5>
+        (% if can_edit_ssh %)
+        <form class="mb-2"
+              hx-post="/ui/api/admin/person/(( person.uuid ))/add_ssh_key"
+              hx-target=".toast-container"
+              hx-swap="beforeend">
+            <div class="row g-2">
+                <div class="col-12 col-md-3">
+                    <input type="text" class="form-control" name="tag" required autocomplete="off"
+                           placeholder="label" aria-label="Key label">
+                </div>
+                <div class="col">
+                    <input type="text" class="form-control" name="key" required autocomplete="off"
+                           placeholder="ssh-ed25519 AAAA..." aria-label="SSH public key">
+                </div>
+                <div class="col-12 col-md-auto">
+                    <button class="btn btn-primary w-100" type="submit">Add key</button>
+                </div>
+            </div>
+        </form>
+        (% endif %)
+        (% if person.ssh_publickeys.len() == 0 %)
+        <p class="mb-0 text-body-secondary">No SSH public keys.</p>
+        (% else %)
+        <ol class="list-group">
+            (% for key in person.ssh_publickeys %)
+            <li class="list-group-item d-flex flex-row justify-content-between align-items-center">
+                <div class="text-break me-2"><span class="fw-bold">(( key.label ))</span>
+                    <code class="d-block small text-body-secondary">(( key.value ))</code></div>
+                (% if can_edit_ssh %)
+                <form hx-post="/ui/api/admin/person/(( person.uuid ))/remove_ssh_key"
+                      hx-confirm="Remove SSH key (( key.label ))?"
+                      hx-target=".toast-container"
+                      hx-swap="beforeend">
+                    <input type="hidden" name="tag" value="(( key.label ))">
+                    <button type="submit" class="btn btn-secondary btn-sm kanidm-remove-list-entry">Remove</button>
+                </form>
+                (% endif %)
+            </li>
+            (% endfor %)
+        </ol>
+        (% endif %)
+    </div>
+</div>
+(% endif %)
+
+(% if can_rw && scim_effective_access.delete %)
+<div class="card border-danger mb-3 col-12 col-md-10 col-lg-8">
+    <div class="card-body">
+        <h5 class="card-title text-danger">Danger zone</h5>
+        <form hx-post="/ui/api/admin/person/(( person.uuid ))/delete"
+              hx-confirm="Delete person (( person.spn ))? This cannot be undone."
+              hx-target=".toast-container"
+              hx-swap="beforeend">
+            <button type="submit" class="btn btn-danger">Delete person</button>
+        </form>
+    </div>
+</div>
 (% endif %)
 
 <div id="toast-container" class="toast-container position-fixed bottom-0 end-0 p-3"></div>

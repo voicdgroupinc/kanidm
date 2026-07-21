@@ -318,9 +318,13 @@ pub struct ScimPerson {
     pub displayname: String,
     pub spn: String,
     pub description: Option<String>,
+    pub legalname: Option<String>,
     pub mails: Vec<ScimMail>,
     pub managed_by: Option<ScimReference>,
     pub groups: Vec<ScimReference>,
+    pub account_expire: Option<OffsetDateTime>,
+    pub account_valid_from: Option<OffsetDateTime>,
+    pub ssh_publickeys: Vec<ScimSshPublicKey>,
 }
 
 impl TryFrom<ScimEntryKanidm> for ScimPerson {
@@ -341,6 +345,7 @@ impl TryFrom<ScimEntryKanidm> for ScimPerson {
             .cloned()
             .ok_or(())?;
         let description = scim_entry.get_string_attr(&Attribute::Description).cloned();
+        let legalname = scim_entry.get_string_attr(&Attribute::LegalName).cloned();
 
         let mails = scim_entry
             .attrs
@@ -364,15 +369,45 @@ impl TryFrom<ScimEntryKanidm> for ScimPerson {
                 _ => None,
             });
 
+        let account_expire = scim_entry
+            .attrs
+            .get(&Attribute::AccountExpire)
+            .and_then(|v| match v {
+                ScimValueKanidm::DateTime(dt) => Some(*dt),
+                _ => None,
+            });
+
+        let account_valid_from =
+            scim_entry
+                .attrs
+                .get(&Attribute::AccountValidFrom)
+                .and_then(|v| match v {
+                    ScimValueKanidm::DateTime(dt) => Some(*dt),
+                    _ => None,
+                });
+
+        let ssh_publickeys = scim_entry
+            .attrs
+            .get(&Attribute::SshPublicKey)
+            .and_then(|v| match v {
+                ScimValueKanidm::SshPublicKey(keys) => Some(keys.clone()),
+                _ => None,
+            })
+            .unwrap_or_default();
+
         Ok(ScimPerson {
             uuid,
             name,
             displayname,
             spn,
             description,
+            legalname,
             mails,
             managed_by,
             groups,
+            account_expire,
+            account_valid_from,
+            ssh_publickeys,
         })
     }
 }

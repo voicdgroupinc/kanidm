@@ -1,29 +1,53 @@
-(% macro string_attr(dispname, name, value, editable, attribute) %)
-(% if scim_effective_access.search.check(&attribute) %)
+(% macro string_attr(dispname, name, value, attribute) %)
+(% if scim_effective_access.search.check(&attribute) -%)
 <div class="row mt-3">
-    <label for="person(( name ))" class="col-12 col-md-3 col-lg-2 col-form-label fw-bold py-0">(( dispname ))</label>
+    <label for="person(( name ))" class="col-12 col-md-3 col-lg-2 col-form-label fw-bold py-0 py-md-2">(( dispname ))</label>
     <div class="col-12 col-md-8 col-lg-6">
+        (% if can_rw && scim_effective_access.modify_present.check(&attribute) -%)
+        <input class="form-control py-0" id="person(( name ))" name="(( name ))" value="(( value ))"/>
+        (% else -%)
         <input readonly class="form-control-plaintext py-0" id="person(( name ))" name="(( name ))" value="(( value ))">
+        (% endif -%)
     </div>
 </div>
-(% endif %)
+(% endif -%)
 (% endmacro %)
 
-<form hx-validate="true" hx-ext="bs-validation">
-    (% call string_attr("UUID", "uuid", person.uuid, false, Attribute::Uuid) %)(% endcall %)
-    (% call string_attr("SPN", "spn", person.spn, false, Attribute::Spn) %)(% endcall %)
-    (% call string_attr("Name", "name", person.name, true, Attribute::Name) %)(% endcall %)
-    (% call string_attr("Displayname", "displayname", person.displayname, true, Attribute::DisplayName) %)(% endcall %)
+(%
+let can_modify_any_attr = scim_effective_access.modify_present.check_any(
+&std::collections::BTreeSet::from(PERSON_ATTRIBUTES))
+%)
 
-    (% if let Some(description) = person.description %)
-        (% call string_attr("Description", "description", description, true, Attribute::Description) %)(% endcall %)
-    (% else %)
-        (% call string_attr("Description", "description", "none", true, Attribute::Description) %)(% endcall %)
-    (% endif %)
+<form id="person_settings_container" class="needs-validation"
+      hx-post="/ui/api/admin/person/(( person.uuid ))"
+      hx-swap="beforeend"
+      hx-target=".toast-container"
+      hx-validate="true"
+      hx-ext="bs-validation"
+      novalidate>
 
-    (% if let Some(entry_managed_by) = person.managed_by %)
-        (% call string_attr("Managed By", "managed_by", entry_managed_by.value, true, Attribute::EntryManagedBy) %)(% endcall %)
-    (% else %)
-        (% call string_attr("Managed By", "managed_by", "none", true, Attribute::EntryManagedBy) %)(% endcall %)
+    (% if can_modify_any_attr -%)
+        (% if can_rw -%)
+            <button type="submit" class="btn btn-primary">Save</button>
+        (% else -%)
+            <a href="/ui/unlock">
+                <button type="button" class="btn btn-secondary">Unlock Edit 🔒</button>
+            </a>
+        (% endif -%)
+    (% endif -%)
+
+    (% call string_attr("UUID", "uuid", person.uuid, Attribute::Uuid) -%)(% endcall %)
+    (% call string_attr("SPN", "spn", person.spn, Attribute::Spn) -%)(% endcall %)
+    (% call string_attr("Name", "name", person.name.clone(), Attribute::Name) -%)(% endcall %)
+    (% call string_attr("Displayname", "displayname", person.displayname.clone(), Attribute::DisplayName) -%)(% endcall %)
+
+    (% let legalname = person.legalname.clone().unwrap_or_default() %)
+    (% call string_attr("Legal name", "legalname", legalname, Attribute::LegalName) -%)(% endcall %)
+
+    (% let description = person.description.clone().unwrap_or_default() %)
+    (% call string_attr("Description", "description", description, Attribute::Description) -%)(% endcall %)
+
+    (% if let Some(entry_managed_by) = person.managed_by.clone() %)
+        (% call string_attr("Managed By", "managed_by", entry_managed_by.value, Attribute::EntryManagedBy) -%)(% endcall %)
     (% endif %)
 </form>
