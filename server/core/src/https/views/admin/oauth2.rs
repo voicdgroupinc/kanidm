@@ -4,7 +4,7 @@ use crate::https::oauth2::oauth2_id;
 use crate::https::views::errors::HtmxError;
 use crate::https::views::navbar::NavbarCtx;
 use crate::https::views::reauth::uat_privileges_active;
-use crate::https::views::{ErrorToastPartial, Urls};
+use crate::https::views::{ErrorToastPartial, MessageToastPartial, Urls};
 use crate::https::ServerState;
 use askama::Template;
 use askama_web::WebTemplate;
@@ -600,6 +600,26 @@ pub(crate) async fn delete_oauth2(
 
 // Apply (or clear, when None) the client's icon. handle_image_update validates the
 // format/size (PNG/JPG/GIF/SVG/WebP, <=1024x1024, <=256KB) and errors otherwise.
+// Mirrors kanidmd_lib::valueset::image limits (MAX_FILE_SIZE / MAX_IMAGE_WIDTH /
+// MAX_IMAGE_HEIGHT). Kept here so we can validate + explain client-side and in
+// the handlers without pulling the image crate into this layer.
+const MAX_IMAGE_UPLOAD_BYTES: usize = 256 * 1024;
+const MAX_IMAGE_UPLOAD_DIMENSION: u32 = 1024;
+
+/// Build a toast that explains an image problem in plain language.
+fn image_message_toast(
+    kopid: &KOpId,
+    title: &str,
+    message: impl Into<String>,
+) -> axum::response::Result<Response> {
+    Ok((MessageToastPartial {
+        title: title.to_string(),
+        message: message.into(),
+        operation_id: kopid.eventid,
+    })
+    .into_response())
+}
+
 async fn apply_oauth2_image(
     state: &ServerState,
     kopid: &KOpId,
@@ -613,6 +633,21 @@ async fn apply_oauth2_image(
         .await
     {
         Ok(_) => Ok((oauth2_view_reload(rs_name), "").into_response()),
+        // The server collapses every image validation failure (bad dimensions,
+        // corrupt/mismatched format, oversize) into InvalidRequestState. We've
+        // already checked type + byte size in the handlers, so this is almost
+        // always a dimensions/format problem — say so instead of leaking the
+        // raw error code.
+        Err(OperationError::InvalidRequestState) => image_message_toast(
+            kopid,
+            "Image rejected",
+            format!(
+                "The image must be a valid PNG, JPG, GIF, SVG or WebP, at most \
+                 {MAX_IMAGE_UPLOAD_DIMENSION}×{MAX_IMAGE_UPLOAD_DIMENSION} px and \
+                 {} KB.",
+                MAX_IMAGE_UPLOAD_BYTES / 1024
+            ),
+        ),
         Err(err_code) => Ok((ErrorToastPartial {
             err_code,
             operation_id: kopid.eventid,
@@ -629,22 +664,49 @@ pub(crate) async fn set_oauth2_image_upload(
     mut multipart: axum::extract::Multipart,
 ) -> axum::response::Result<Response> {
     let mut image: Option<ImageValue> = None;
+    // Track why a field was skipped so we can report something useful instead
+    // of a blanket "InvalidRequestState" when nothing usable came through.
+    let mut saw_file = false;
+    let mut rejected_type: Option<String> = None;
     while let Some(field) = multipart.next_field().await.unwrap_or(None) {
         let Some(filename) = field.file_name().map(|f| f.to_string()) else {
             continue;
         };
-        let Some(content_type) = field.content_type().map(|f| f.to_string()) else {
-            continue;
-        };
+        saw_file = true;
+        let content_type = field
+            .content_type()
+            .map(|f| f.to_string())
+            .unwrap_or_default();
         if !VALID_IMAGE_UPLOAD_CONTENT_TYPES.contains(&content_type.as_str()) {
+            rejected_type = Some(if content_type.is_empty() {
+                "unknown".to_string()
+            } else {
+                content_type
+            });
             continue;
         }
         let Ok(filetype) = ImageType::try_from_content_type(&content_type) else {
+            rejected_type = Some(content_type);
             continue;
         };
         let Ok(data) = field.bytes().await else {
-            continue;
+            return image_message_toast(
+                &kopid,
+                "Upload failed",
+                "Could not read the uploaded file — it may be too large for the request.",
+            );
         };
+        if data.len() > MAX_IMAGE_UPLOAD_BYTES {
+            return image_message_toast(
+                &kopid,
+                "Image too large",
+                format!(
+                    "The image is {} KB. The maximum is {} KB.",
+                    data.len() / 1024,
+                    MAX_IMAGE_UPLOAD_BYTES / 1024
+                ),
+            );
+        }
         image = Some(ImageValue {
             filetype,
             filename,
@@ -655,11 +717,23 @@ pub(crate) async fn set_oauth2_image_upload(
         Some(image) => {
             apply_oauth2_image(&state, &kopid, &client_auth_info, &rs_name, Some(image)).await
         }
-        None => Ok((ErrorToastPartial {
-            err_code: OperationError::InvalidRequestState,
-            operation_id: kopid.eventid,
-        })
-        .into_response()),
+        None => {
+            if let Some(bad) = rejected_type {
+                image_message_toast(
+                    &kopid,
+                    "Unsupported image type",
+                    format!("'{bad}' isn't supported. Use PNG, JPG, GIF, SVG or WebP."),
+                )
+            } else if saw_file {
+                image_message_toast(&kopid, "No image", "The selected file wasn't a valid image.")
+            } else {
+                image_message_toast(
+                    &kopid,
+                    "No image selected",
+                    "Choose an image file to upload.",
+                )
+            }
+        }
     }
 }
 
@@ -678,32 +752,32 @@ pub(crate) async fn set_oauth2_image_url(
 ) -> axum::response::Result<Response> {
     let url = query.url.trim().to_string();
     if !(url.starts_with("http://") || url.starts_with("https://")) {
-        return Ok((ErrorToastPartial {
-            err_code: OperationError::InvalidRequestState,
-            operation_id: kopid.eventid,
-        })
-        .into_response());
+        return image_message_toast(
+            &kopid,
+            "Invalid URL",
+            "Enter a full http:// or https:// image URL.",
+        );
     }
-
-    let err = |op: OperationError| {
-        Ok((ErrorToastPartial {
-            err_code: op,
-            operation_id: kopid.eventid,
-        })
-        .into_response())
-    };
 
     let Ok(client) = reqwest::Client::builder()
         .timeout(Duration::from_secs(10))
         .build()
     else {
-        return err(OperationError::InvalidState);
+        return image_message_toast(&kopid, "Fetch failed", "Could not create an HTTP client.");
     };
     let Ok(resp) = client.get(&url).send().await else {
-        return err(OperationError::InvalidRequestState);
+        return image_message_toast(
+            &kopid,
+            "Fetch failed",
+            "Could not reach that URL. Check it's correct and publicly reachable.",
+        );
     };
     let Ok(resp) = resp.error_for_status() else {
-        return err(OperationError::InvalidRequestState);
+        return image_message_toast(
+            &kopid,
+            "Fetch failed",
+            "The URL returned an error response.",
+        );
     };
     let content_type = resp
         .headers()
@@ -711,17 +785,44 @@ pub(crate) async fn set_oauth2_image_url(
         .and_then(|v| v.to_str().ok())
         .map(|s| s.split(';').next().unwrap_or(s).trim().to_string());
     let Some(content_type) = content_type else {
-        return err(OperationError::InvalidRequestState);
+        return image_message_toast(
+            &kopid,
+            "Unsupported image type",
+            "The URL didn't return an image content-type. Use PNG, JPG, GIF, SVG or WebP.",
+        );
     };
     if !VALID_IMAGE_UPLOAD_CONTENT_TYPES.contains(&content_type.as_str()) {
-        return err(OperationError::InvalidRequestState);
+        return image_message_toast(
+            &kopid,
+            "Unsupported image type",
+            format!("'{content_type}' isn't supported. Use PNG, JPG, GIF, SVG or WebP."),
+        );
     }
     let Ok(filetype) = ImageType::try_from_content_type(&content_type) else {
-        return err(OperationError::InvalidRequestState);
+        return image_message_toast(
+            &kopid,
+            "Unsupported image type",
+            format!("'{content_type}' isn't supported. Use PNG, JPG, GIF, SVG or WebP."),
+        );
     };
     let Ok(bytes) = resp.bytes().await else {
-        return err(OperationError::InvalidRequestState);
+        return image_message_toast(
+            &kopid,
+            "Fetch failed",
+            "Could not read the image from that URL.",
+        );
     };
+    if bytes.len() > MAX_IMAGE_UPLOAD_BYTES {
+        return image_message_toast(
+            &kopid,
+            "Image too large",
+            format!(
+                "The image is {} KB. The maximum is {} KB.",
+                bytes.len() / 1024,
+                MAX_IMAGE_UPLOAD_BYTES / 1024
+            ),
+        );
+    }
     let filename = url
         .rsplit('/')
         .next()
