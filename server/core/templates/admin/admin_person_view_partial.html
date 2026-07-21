@@ -177,6 +177,22 @@
             </div>
         </form>
         (% endif %)
+        (% if other_persons.len() > 0 %)
+        <form class="mb-2"
+              hx-post="/ui/api/admin/person/(( person.uuid ))/copy_groups"
+              hx-confirm="Copy all group memberships from the selected user to (( person.spn ))? (existing memberships are kept)"
+              hx-target=".toast-container" hx-swap="beforeend">
+            <div class="input-group">
+                <span class="input-group-text">Copy groups from</span>
+                <select class="form-select" name="source" aria-label="Copy groups from user">
+                    (% for p in other_persons %)
+                    <option value="(( p ))">(( p ))</option>
+                    (% endfor %)
+                </select>
+                <button class="btn btn-outline-primary" type="submit">Copy</button>
+            </div>
+        </form>
+        (% endif %)
         (% endif %)
         (% if person.groups.len() == 0 %)
         <p class="mb-0 text-body-secondary">Not a direct member of any group.</p>

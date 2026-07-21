@@ -1,14 +1,60 @@
+use crate::https::middleware::KOpId;
 use crate::https::ServerState;
 use axum::routing::{get, post};
 use axum::Router;
 use axum_htmx::HxRequestGuardLayer;
+use kanidm_proto::attribute::Attribute;
+use kanidm_proto::scim_v1::server::{ScimListResponse, ScimValueKanidm};
+use kanidm_proto::scim_v1::{ScimEntryGetQuery, ScimFilter};
+use kanidmd_lib::constants::EntryClass;
+use kanidmd_lib::idm::authentication::ClientAuthInfo;
 use serde::Deserialize;
+use std::num::NonZeroU64;
 use url::form_urlencoded;
+use uuid::Uuid;
 
 pub(crate) mod groups;
 pub(crate) mod oauth2;
 pub(crate) mod persons;
 pub(crate) mod settings;
+
+/// List (uuid, name) for all entries of `class` the caller can see, sorted by name,
+/// for populating admin-UI dropdowns (groups, persons). Best-effort: returns empty on error.
+pub(crate) async fn list_named_entries(
+    state: &ServerState,
+    kopid: &KOpId,
+    client_auth_info: &ClientAuthInfo,
+    class: EntryClass,
+) -> Vec<(Uuid, String)> {
+    let filter = ScimFilter::Equal(Attribute::Class.into(), class.into());
+    let res = state
+        .qe_r_ref
+        .scim_entry_search(
+            client_auth_info.clone(),
+            kopid.eventid,
+            filter,
+            ScimEntryGetQuery {
+                attributes: Some(vec![Attribute::Name]),
+                sort_by: Some(Attribute::Name),
+                count: NonZeroU64::new(1000),
+                ..Default::default()
+            },
+        )
+        .await;
+    match res {
+        Ok(base) => {
+            let base: ScimListResponse = base;
+            base.resources
+                .iter()
+                .filter_map(|e| match e.attrs.get(&Attribute::Name) {
+                    Some(ScimValueKanidm::String(name)) => Some((e.header.id, name.clone())),
+                    _ => None,
+                })
+                .collect()
+        }
+        Err(_) => Vec::new(),
+    }
+}
 
 /// Default number of rows per page in the person/group lists.
 pub(crate) const DEFAULT_PER_PAGE: u64 = 100;
@@ -178,6 +224,10 @@ pub fn admin_api_router() -> Router<ServerState> {
             post(persons::remove_person_group),
         )
         .route(
+            "/person/{person_uuid}/copy_groups",
+            post(persons::copy_person_groups),
+        )
+        .route(
             "/person/{person_uuid}/set_expire",
             post(persons::set_account_expire),
         )
@@ -254,7 +304,19 @@ pub fn admin_api_router() -> Router<ServerState> {
             "/oauth2/{rs_name}/remove_scopemap",
             post(oauth2::remove_oauth2_scopemap),
         )
-        .route("/oauth2/{rs_name}/delete", post(oauth2::delete_oauth2));
+        .route("/oauth2/{rs_name}/delete", post(oauth2::delete_oauth2))
+        .route(
+            "/oauth2/{rs_name}/image",
+            post(oauth2::set_oauth2_image_upload),
+        )
+        .route(
+            "/oauth2/{rs_name}/image_url",
+            post(oauth2::set_oauth2_image_url),
+        )
+        .route(
+            "/oauth2/{rs_name}/image_delete",
+            post(oauth2::delete_oauth2_image),
+        );
 
     let guarded_router = Router::new().layer(HxRequestGuardLayer::new("/ui"));
 

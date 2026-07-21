@@ -54,6 +54,47 @@
 
 <div class="card mb-3 col-12 col-md-10 col-lg-8">
     <div class="card-body">
+        <h5 class="card-title">App icon</h5>
+        (% if has_image %)
+        <img src="/ui/images/oauth2/(( name ))" alt="(( displayname )) icon"
+             style="max-height:64px; max-width:200px;" class="mb-2 d-block">
+        (% else %)
+        <p class="text-body-secondary">No icon set.</p>
+        (% endif %)
+        (% if can_rw %)
+        <form class="mb-2" hx-post="/ui/api/admin/oauth2/(( name ))/image"
+              hx-encoding="multipart/form-data"
+              hx-target=".toast-container" hx-swap="beforeend">
+            <label class="form-label fw-bold" for="oauth2-image-file">Upload an image</label>
+            <div class="input-group">
+                <input type="file" class="form-control" id="oauth2-image-file" name="image"
+                       accept="image/png,image/jpeg,image/gif,image/svg+xml,image/webp" required>
+                <button class="btn btn-primary" type="submit">Upload</button>
+            </div>
+        </form>
+        <form class="mb-1" hx-post="/ui/api/admin/oauth2/(( name ))/image_url"
+              hx-target=".toast-container" hx-swap="beforeend">
+            <label class="form-label fw-bold" for="oauth2-image-url">…or use an image URL</label>
+            <div class="input-group">
+                <input type="url" class="form-control" id="oauth2-image-url" name="url"
+                       placeholder="https://example.com/logo.png" required>
+                <button class="btn btn-primary" type="submit">Fetch &amp; set</button>
+            </div>
+        </form>
+        <div class="form-text mb-2">PNG, JPG, GIF, SVG or WebP · up to 1024×1024 · max 256&nbsp;KB.</div>
+        (% if has_image %)
+        <form hx-post="/ui/api/admin/oauth2/(( name ))/image_delete"
+              hx-confirm="Remove this app's icon?"
+              hx-target=".toast-container" hx-swap="beforeend">
+            <button type="submit" class="btn btn-outline-secondary btn-sm">Remove icon</button>
+        </form>
+        (% endif %)
+        (% endif %)
+    </div>
+</div>
+
+<div class="card mb-3 col-12 col-md-10 col-lg-8">
+    <div class="card-body">
         <h5 class="card-title">Redirect URLs</h5>
         (% if can_rw %)
         <form class="mb-2" hx-post="/ui/api/admin/oauth2/(( name ))/add_origin"
@@ -95,8 +136,12 @@
         <form class="row g-2 mb-2" hx-post="/ui/api/admin/oauth2/(( name ))/add_scopemap"
               hx-target=".toast-container" hx-swap="beforeend">
             <div class="col-12 col-md-5">
-                <input type="text" class="form-control" name="group" required autocomplete="off"
-                       placeholder="group name or uuid" aria-label="Group">
+                <select class="form-select" name="group" required aria-label="Group">
+                    <option value="" selected disabled>Select a group…</option>
+                    (% for g in groups %)
+                    <option value="(( g ))">(( g ))</option>
+                    (% endfor %)
+                </select>
             </div>
             <div class="col">
                 <input type="text" class="form-control" name="scopes" autocomplete="off"

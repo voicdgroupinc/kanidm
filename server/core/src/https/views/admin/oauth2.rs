@@ -14,7 +14,9 @@ use axum::Extension;
 use axum_extra::extract::Form;
 use axum_htmx::{HxLocation, HxPushUrl, HxRequest};
 use kanidm_proto::attribute::Attribute;
-use kanidm_proto::internal::{CreateRequest, UserAuthToken};
+use kanidm_proto::constants::VALID_IMAGE_UPLOAD_CONTENT_TYPES;
+use kanidm_proto::internal::{CreateRequest, ImageType, ImageValue, OperationError, UserAuthToken};
+use std::time::Duration;
 use kanidm_proto::scim_v1::server::{
     ScimEntryKanidm, ScimListResponse, ScimOAuth2ScopeMap, ScimValueKanidm,
 };
@@ -26,7 +28,7 @@ use kanidmd_lib::filter::{f_eq, Filter};
 use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
-const OAUTH2_ATTRIBUTES: [Attribute; 7] = [
+const OAUTH2_ATTRIBUTES: [Attribute; 8] = [
     Attribute::Class,
     Attribute::Name,
     Attribute::DisplayName,
@@ -34,6 +36,7 @@ const OAUTH2_ATTRIBUTES: [Attribute; 7] = [
     Attribute::OAuth2RsOriginLanding,
     Attribute::OAuth2RsOrigin,
     Attribute::OAuth2RsScopeMap,
+    Attribute::Image,
 ];
 
 fn attr_string(entry: &ScimEntryKanidm, attr: &Attribute) -> String {
@@ -104,6 +107,10 @@ struct Oauth2DetailPartial {
     basic_secret: Option<String>,
     is_public: bool,
     can_rw: bool,
+    // All group names, for the scope-map group dropdown.
+    groups: Vec<String>,
+    // Whether this client currently has an icon/logo set.
+    has_image: bool,
 }
 
 #[derive(Template, WebTemplate)]
@@ -229,6 +236,14 @@ pub(crate) async fn view_oauth2_detail_get(
             .flatten()
     };
 
+    let has_image = entry.attrs.contains_key(&Attribute::Image);
+    let groups: Vec<String> =
+        super::list_named_entries(&state, &kopid, &client_auth_info, EntryClass::Group)
+            .await
+            .into_iter()
+            .map(|(_, name)| name)
+            .collect();
+
     let partial = Oauth2DetailPartial {
         name: attr_string(&entry, &Attribute::Name),
         displayname: attr_string(&entry, &Attribute::DisplayName),
@@ -239,6 +254,8 @@ pub(crate) async fn view_oauth2_detail_get(
         basic_secret,
         is_public,
         can_rw,
+        groups,
+        has_image,
     };
 
     let push_url = HxPushUrl(format!("/ui/admin/oauth2/{rs_name}/view"));
@@ -523,4 +540,151 @@ pub(crate) async fn delete_oauth2(
         })
         .into_response()),
     }
+}
+
+// Apply (or clear, when None) the client's icon. handle_image_update validates the
+// format/size (PNG/JPG/GIF/SVG/WebP, <=1024x1024, <=256KB) and errors otherwise.
+async fn apply_oauth2_image(
+    state: &ServerState,
+    kopid: &KOpId,
+    client_auth_info: &kanidmd_lib::idm::authentication::ClientAuthInfo,
+    rs_name: &str,
+    image: Option<ImageValue>,
+) -> axum::response::Result<Response> {
+    match state
+        .qe_w_ref
+        .handle_image_update(client_auth_info.clone(), oauth2_id(rs_name), image)
+        .await
+    {
+        Ok(_) => Ok((oauth2_view_reload(rs_name), "").into_response()),
+        Err(err_code) => Ok((ErrorToastPartial {
+            err_code,
+            operation_id: kopid.eventid,
+        })
+        .into_response()),
+    }
+}
+
+pub(crate) async fn set_oauth2_image_upload(
+    State(state): State<ServerState>,
+    Extension(kopid): Extension<KOpId>,
+    VerifiedClientInformation(client_auth_info): VerifiedClientInformation,
+    Path(rs_name): Path<String>,
+    mut multipart: axum::extract::Multipart,
+) -> axum::response::Result<Response> {
+    let mut image: Option<ImageValue> = None;
+    while let Some(field) = multipart.next_field().await.unwrap_or(None) {
+        let Some(filename) = field.file_name().map(|f| f.to_string()) else {
+            continue;
+        };
+        let Some(content_type) = field.content_type().map(|f| f.to_string()) else {
+            continue;
+        };
+        if !VALID_IMAGE_UPLOAD_CONTENT_TYPES.contains(&content_type.as_str()) {
+            continue;
+        }
+        let Ok(filetype) = ImageType::try_from_content_type(&content_type) else {
+            continue;
+        };
+        let Ok(data) = field.bytes().await else {
+            continue;
+        };
+        image = Some(ImageValue {
+            filetype,
+            filename,
+            contents: data.to_vec(),
+        });
+    }
+    match image {
+        Some(image) => {
+            apply_oauth2_image(&state, &kopid, &client_auth_info, &rs_name, Some(image)).await
+        }
+        None => Ok((ErrorToastPartial {
+            err_code: OperationError::InvalidRequestState,
+            operation_id: kopid.eventid,
+        })
+        .into_response()),
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub(crate) struct ImageUrlForm {
+    url: String,
+}
+
+// Fetch an image from a URL (admin-supplied) and set it as the client icon.
+pub(crate) async fn set_oauth2_image_url(
+    State(state): State<ServerState>,
+    Extension(kopid): Extension<KOpId>,
+    VerifiedClientInformation(client_auth_info): VerifiedClientInformation,
+    Path(rs_name): Path<String>,
+    Form(query): Form<ImageUrlForm>,
+) -> axum::response::Result<Response> {
+    let url = query.url.trim().to_string();
+    if !(url.starts_with("http://") || url.starts_with("https://")) {
+        return Ok((ErrorToastPartial {
+            err_code: OperationError::InvalidRequestState,
+            operation_id: kopid.eventid,
+        })
+        .into_response());
+    }
+
+    let err = |op: OperationError| {
+        Ok((ErrorToastPartial {
+            err_code: op,
+            operation_id: kopid.eventid,
+        })
+        .into_response())
+    };
+
+    let Ok(client) = reqwest::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .build()
+    else {
+        return err(OperationError::InvalidState);
+    };
+    let Ok(resp) = client.get(&url).send().await else {
+        return err(OperationError::InvalidRequestState);
+    };
+    let Ok(resp) = resp.error_for_status() else {
+        return err(OperationError::InvalidRequestState);
+    };
+    let content_type = resp
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.split(';').next().unwrap_or(s).trim().to_string());
+    let Some(content_type) = content_type else {
+        return err(OperationError::InvalidRequestState);
+    };
+    if !VALID_IMAGE_UPLOAD_CONTENT_TYPES.contains(&content_type.as_str()) {
+        return err(OperationError::InvalidRequestState);
+    }
+    let Ok(filetype) = ImageType::try_from_content_type(&content_type) else {
+        return err(OperationError::InvalidRequestState);
+    };
+    let Ok(bytes) = resp.bytes().await else {
+        return err(OperationError::InvalidRequestState);
+    };
+    let filename = url
+        .rsplit('/')
+        .next()
+        .filter(|s| !s.is_empty())
+        .unwrap_or("logo")
+        .to_string();
+    let image = ImageValue {
+        filetype,
+        filename,
+        contents: bytes.to_vec(),
+    };
+    apply_oauth2_image(&state, &kopid, &client_auth_info, &rs_name, Some(image)).await
+}
+
+pub(crate) async fn delete_oauth2_image(
+    State(state): State<ServerState>,
+    Extension(kopid): Extension<KOpId>,
+    VerifiedClientInformation(client_auth_info): VerifiedClientInformation,
+    Path(rs_name): Path<String>,
+) -> axum::response::Result<Response> {
+    apply_oauth2_image(&state, &kopid, &client_auth_info, &rs_name, None).await
 }
