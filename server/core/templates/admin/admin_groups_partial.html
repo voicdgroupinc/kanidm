@@ -3,6 +3,7 @@
 (% block groups_item_extra_classes %)active(% endblock %)
 
 (% block admin_page %)
+(% let base_path = "/ui/admin/groups" %)
 <nav aria-label="breadcrumb">
     <ol class="breadcrumb">
         <li class="breadcrumb-item active" aria-current="page">Group List</li>
@@ -13,20 +14,56 @@
 <a href="/ui/admin/groups/create" hx-target="#main" class="btn btn-primary mb-3">＋ Create group</a>
 (% endif %)
 
+<form class="mb-3" hx-get="(( base_path ))" hx-target="#main" hx-push-url="true"
+      hx-trigger="submit, change, keyup changed delay:400ms">
+    <div class="row g-2 align-items-center">
+        <div class="col-12 col-md-6">
+            <input type="search" class="form-control" name="q" value="(( pager.q ))"
+                   placeholder="Search name or description" aria-label="Search groups">
+        </div>
+        <div class="col-auto">
+            <select class="form-select" name="per_page" aria-label="Rows per page">
+                <option value="25" (% if pager.per_page == 25u64 %)selected(% endif %)>25 / page</option>
+                <option value="50" (% if pager.per_page == 50u64 %)selected(% endif %)>50 / page</option>
+                <option value="100" (% if pager.per_page == 100u64 %)selected(% endif %)>100 / page</option>
+                <option value="250" (% if pager.per_page == 250u64 %)selected(% endif %)>250 / page</option>
+            </select>
+        </div>
+    </div>
+    <input type="hidden" name="sort" value="(( pager.sort ))">
+    <input type="hidden" name="order" value="(( pager.order ))">
+</form>
+
 <table class="table table-striped">
     <thead>
         <tr>
-            <th scope="col">Name</th>
-            <th scope="col">Uuid</th>
+            <th scope="col">
+                <a href="(( base_path ))(( pager.sort_link("name") ))"
+                   hx-get="(( base_path ))(( pager.sort_link("name") ))"
+                   hx-target="#main" hx-push-url="true">Name(( pager.sort_indicator("name") ))</a>
+            </th>
+            <th scope="col">
+                <a href="(( base_path ))(( pager.sort_link("description") ))"
+                   hx-get="(( base_path ))(( pager.sort_link("description") ))"
+                   hx-target="#main" hx-push-url="true">Description(( pager.sort_indicator("description") ))</a>
+            </th>
+            <th scope="col">Members</th>
         </tr>
     </thead>
     <tbody>
     (% for (group, _) in groups %)
         <tr>
             <td><a href="/ui/admin/group/(( group.uuid ))/view" hx-target="#main">(( group.name ))</a></td>
-            <td>(( group.uuid ))</td>
+            <td>(% if let Some(description) = group.description.as_ref() %)(( description ))(% else %)<span class="text-body-secondary">—</span>(% endif %)</td>
+            <td>(( group.members.len() ))</td>
         </tr>
     (% endfor %)
     </tbody>
 </table>
+
+(% if groups.len() == 0 %)
+<p class="text-body-secondary">No groups match your search.</p>
+(% endif %)
+
+(% include "admin/admin_pagination_partial.html" %)
 (% endblock %)
