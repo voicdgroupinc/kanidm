@@ -90,6 +90,8 @@ struct PersonViewPartial {
     can_edit_ssh: bool,
     // Group names the person is NOT already a member of, for the "Add to group" dropdown.
     addable_groups: Vec<String>,
+    // Other persons, for the "copy groups from…" dropdown.
+    other_persons: Vec<String>,
 }
 
 #[derive(Template, WebTemplate)]
@@ -148,12 +150,21 @@ pub(crate) async fn view_person_view_get(
     // Build the add-to-group dropdown: all groups minus the ones already joined.
     let member_uuids: std::collections::BTreeSet<Uuid> =
         person.groups.iter().map(|g| g.uuid).collect();
-    let addable_groups: Vec<String> = list_all_groups(&state, &kopid, &client_auth_info)
-        .await
-        .into_iter()
-        .filter(|(uuid, _)| !member_uuids.contains(uuid))
-        .map(|(_, name)| name)
-        .collect();
+    let addable_groups: Vec<String> =
+        super::list_named_entries(&state, &kopid, &client_auth_info, EntryClass::Group)
+            .await
+            .into_iter()
+            .filter(|(uuid, _)| !member_uuids.contains(uuid))
+            .map(|(_, name)| name)
+            .collect();
+    // Other persons, for the "copy groups from…" dropdown.
+    let other_persons: Vec<String> =
+        super::list_named_entries(&state, &kopid, &client_auth_info, EntryClass::Person)
+            .await
+            .into_iter()
+            .filter(|(uuid, _)| *uuid != person.uuid)
+            .map(|(_, name)| name)
+            .collect();
 
     let person_partial = PersonViewPartial {
         person,
@@ -166,6 +177,7 @@ pub(crate) async fn view_person_view_get(
         can_edit_validity,
         can_edit_ssh,
         addable_groups,
+        other_persons,
     };
     let push_url = HxPushUrl(format!("/ui/admin/person/{uuid}/view"));
     Ok(if is_htmx {
@@ -523,6 +535,71 @@ pub(crate) async fn remove_person_group(
         })
         .into_response()),
     }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub(crate) struct CopyGroupsForm {
+    // Source person (name or uuid) whose group memberships are copied to this person.
+    source: String,
+}
+
+// Copy the source person's group memberships onto this person (additive; existing
+// memberships are kept). Each add is ACP-enforced per group; groups the caller can't
+// manage are skipped, and the reloaded page reflects what actually applied.
+pub(crate) async fn copy_person_groups(
+    State(state): State<ServerState>,
+    Extension(kopid): Extension<KOpId>,
+    VerifiedClientInformation(client_auth_info): VerifiedClientInformation,
+    Path(person_uuid): Path<Uuid>,
+    Form(query): Form<CopyGroupsForm>,
+) -> axum::response::Result<Response> {
+    let source = match state
+        .qe_r_ref
+        .scim_entry_id_get(
+            client_auth_info.clone(),
+            kopid.eventid,
+            query.source.clone(),
+            EntryClass::Person,
+            ScimEntryGetQuery {
+                attributes: Some(vec![Attribute::DirectMemberOf]),
+                ..Default::default()
+            },
+        )
+        .await
+    {
+        Ok(e) => e,
+        Err(err_code) => {
+            return Ok((ErrorToastPartial {
+                err_code,
+                operation_id: kopid.eventid,
+            })
+            .into_response())
+        }
+    };
+
+    let group_uuids: Vec<String> = match source.attrs.get(&Attribute::DirectMemberOf) {
+        Some(ScimValueKanidm::EntryReferences(refs)) => {
+            refs.iter().map(|r| r.uuid.to_string()).collect()
+        }
+        _ => Vec::new(),
+    };
+
+    for g in group_uuids {
+        let group_filter = filter_all!(f_eq(Attribute::Class, EntryClass::Group.into()));
+        let _ = state
+            .qe_w_ref
+            .handle_appendattribute(
+                client_auth_info.clone(),
+                g,
+                Attribute::Member.to_string(),
+                vec![person_uuid.to_string()],
+                group_filter,
+                kopid.eventid,
+            )
+            .await;
+    }
+
+    Ok((person_view_reload(person_uuid), "").into_response())
 }
 
 // Render an OffsetDateTime as the value expected by <input type="datetime-local">
@@ -932,40 +1009,6 @@ async fn get_persons_info(
         .collect();
 
     Ok((persons, total))
-}
-
-// List all group (uuid, name) pairs the caller can see, for the add-to-group dropdown.
-async fn list_all_groups(
-    state: &ServerState,
-    kopid: &KOpId,
-    client_auth_info: &ClientAuthInfo,
-) -> Vec<(Uuid, String)> {
-    let filter = ScimFilter::Equal(Attribute::Class.into(), EntryClass::Group.into());
-    let res = state
-        .qe_r_ref
-        .scim_entry_search(
-            client_auth_info.clone(),
-            kopid.eventid,
-            filter,
-            ScimEntryGetQuery {
-                attributes: Some(vec![Attribute::Name]),
-                sort_by: Some(Attribute::Name),
-                count: NonZeroU64::new(1000),
-                ..Default::default()
-            },
-        )
-        .await;
-    match res {
-        Ok(base) => base
-            .resources
-            .iter()
-            .filter_map(|e| match e.attrs.get(&Attribute::Name) {
-                Some(ScimValueKanidm::String(name)) => Some((e.header.id, name.clone())),
-                _ => None,
-            })
-            .collect(),
-        Err(_) => Vec::new(),
-    }
 }
 
 fn scimentry_into_personinfo(
