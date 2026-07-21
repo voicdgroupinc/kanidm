@@ -84,6 +84,89 @@ let can_modify_any_attr = scim_effective_access.modify_present.check_any(
         </ol>
     (% endif %)
 
+(% if scim_effective_access.search.check(&Attribute::Mail) %)
+(% let can_edit_mail = can_rw && scim_effective_access.modify_present.check(&Attribute::Mail) %)
+<label class="mt-4 fw-bold">Emails</label>
+(% if can_edit_mail %)
+<form class="mb-2"
+      hx-post="/ui/api/admin/group/(( group.uuid ))/add_mail"
+      hx-target=".toast-container" hx-swap="beforeend"
+      hx-validate="true" hx-ext="bs-validation" novalidate>
+    <div class="input-group col-12 col-md-8 col-lg-6">
+        <input type="email" class="form-control" name="mail" required autocomplete="off"
+               placeholder="team@example.com" aria-label="Group email to add">
+        <button class="btn btn-primary" type="submit">Add email</button>
+    </div>
+</form>
+(% endif %)
+(% if group.mails.len() == 0 %)
+<p class="text-body-secondary">No email addresses.</p>
+(% else %)
+<ol class="list-group col-12 col-md-8 col-lg-6">
+    (% for mail in group.mails %)
+    <li class="list-group-item d-flex flex-row justify-content-between align-items-center">
+        <div>(( mail.value ))(% if loop.first %) <span class="badge text-bg-secondary">primary</span>(% endif %)</div>
+        (% if can_edit_mail %)
+        <form hx-post="/ui/api/admin/group/(( group.uuid ))/remove_mail"
+              hx-confirm="Remove email (( mail.value ))?"
+              hx-target=".toast-container" hx-swap="beforeend">
+            <input type="hidden" name="mail" value="(( mail.value ))">
+            <button type="submit" class="btn btn-secondary btn-sm kanidm-remove-list-entry">Remove</button>
+        </form>
+        (% endif %)
+    </li>
+    (% endfor %)
+</ol>
+(% endif %)
+(% endif %)
+
+(% if scim_effective_access.search.check(&Attribute::EntryManagedBy) %)
+<label class="mt-4 fw-bold">Managed by
+    <span class="fw-normal text-body-secondary">(delegated admin)</span></label>
+(% if can_rw && scim_effective_access.modify_present.check(&Attribute::EntryManagedBy) %)
+<form hx-post="/ui/api/admin/group/(( group.uuid ))/managed_by"
+      hx-target=".toast-container" hx-swap="beforeend">
+    <div class="input-group col-12 col-md-8 col-lg-6">
+        <input type="text" class="form-control" name="managed_by" autocomplete="off"
+               placeholder="group/person name or uuid (blank to clear)"
+               value="(% if let Some(m) = group.managed_by.as_ref() %)(( m.value ))(% endif %)"
+               aria-label="Entry managed by">
+        <button class="btn btn-primary" type="submit">Set</button>
+    </div>
+</form>
+(% else %)
+<p>(% if let Some(m) = group.managed_by.as_ref() %)(( m.value ))(% else %)<span class="text-body-secondary">Not delegated.</span>(% endif %)</p>
+(% endif %)
+(% endif %)
+
+(% if scim_effective_access.search.check(&Attribute::DirectMemberOf) %)
+<label class="mt-4 fw-bold">Member of</label>
+(% if group.memberof.len() == 0 %)
+<p class="text-body-secondary">Not a member of any group.</p>
+(% else %)
+<ol class="list-group col-12 col-md-8 col-lg-6">
+    (% for parent in group.memberof %)
+    <li class="list-group-item">
+        <a href="/ui/admin/group/(( parent.uuid ))/view" hx-target="#main">(( parent.value ))</a>
+    </li>
+    (% endfor %)
+</ol>
+(% endif %)
+(% endif %)
+
+(% if can_rw %)
+<label class="mt-4 fw-bold">POSIX / unix</label>
+<form hx-post="/ui/api/admin/group/(( group.uuid ))/unix_extend"
+      hx-target=".toast-container" hx-swap="beforeend">
+    <div class="input-group col-12 col-md-8 col-lg-6">
+        <input type="number" class="form-control" name="gidnumber" min="0"
+               placeholder="gidnumber (optional)" aria-label="gidnumber">
+        <button class="btn btn-secondary" type="submit">Enable POSIX</button>
+    </div>
+    <div class="form-text">Adds unix/POSIX attributes so this group can be used for unix login.</div>
+</form>
+(% endif %)
+
 (% if can_rw && scim_effective_access.delete %)
 <form class="mt-4"
       hx-post="/ui/api/admin/group/(( group.uuid ))/delete"

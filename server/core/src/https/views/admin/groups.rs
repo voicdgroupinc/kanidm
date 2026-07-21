@@ -24,6 +24,7 @@ use kanidm_proto::scim_v1::ScimEntryGetQuery;
 use kanidm_proto::scim_v1::{client::ScimEntryPutKanidm, JsonValue, ScimFilter, ScimSortOrder};
 use std::num::NonZeroU64;
 use kanidm_proto::v1::Entry as ProtoEntry;
+use kanidm_proto::v1::GroupUnixExtend;
 use kanidmd_lib::constants::EntryClass;
 use kanidmd_lib::filter::{f_eq, f_id, Filter};
 use kanidmd_lib::idm::authentication::ClientAuthInfo;
@@ -31,11 +32,14 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
-pub const GROUP_ATTRIBUTES: [Attribute; 4] = [
+pub const GROUP_ATTRIBUTES: [Attribute; 7] = [
     Attribute::Uuid,
     Attribute::Name,
     Attribute::Description,
     Attribute::Member,
+    Attribute::Mail,
+    Attribute::EntryManagedBy,
+    Attribute::DirectMemberOf,
 ];
 
 #[derive(Template, WebTemplate)]
@@ -559,6 +563,161 @@ pub(crate) async fn remove_member(
 
     // return floating notification: saved/failed
     Ok((SavedToast {}).into_response())
+}
+
+// After a mutation on the group page, reload the group view so the authoritative
+// server-rendered lists refresh.
+fn group_view_reload(group_uuid: Uuid) -> HxLocation {
+    HxLocation::from(format!("/ui/admin/group/{group_uuid}/view").as_str())
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub(crate) struct GroupMailForm {
+    mail: String,
+}
+
+pub(crate) async fn add_group_mail(
+    State(state): State<ServerState>,
+    Extension(kopid): Extension<KOpId>,
+    VerifiedClientInformation(client_auth_info): VerifiedClientInformation,
+    Path(group_uuid): Path<Uuid>,
+    Form(query): Form<GroupMailForm>,
+) -> axum::response::Result<Response> {
+    let filter = filter_all!(f_eq(Attribute::Class, EntryClass::Group.into()));
+    match state
+        .qe_w_ref
+        .handle_appendattribute(
+            client_auth_info.clone(),
+            group_uuid.to_string(),
+            Attribute::Mail.to_string(),
+            vec![query.mail],
+            filter,
+            kopid.eventid,
+        )
+        .await
+    {
+        Ok(_) => Ok((group_view_reload(group_uuid), "").into_response()),
+        Err(err_code) => Ok((ErrorToastPartial {
+            err_code,
+            operation_id: kopid.eventid,
+        })
+        .into_response()),
+    }
+}
+
+pub(crate) async fn remove_group_mail(
+    State(state): State<ServerState>,
+    Extension(kopid): Extension<KOpId>,
+    VerifiedClientInformation(client_auth_info): VerifiedClientInformation,
+    Path(group_uuid): Path<Uuid>,
+    Form(query): Form<GroupMailForm>,
+) -> axum::response::Result<Response> {
+    let filter = filter_all!(f_eq(Attribute::Class, EntryClass::Group.into()));
+    match state
+        .qe_w_ref
+        .handle_removeattributevalues(
+            client_auth_info.clone(),
+            group_uuid.to_string(),
+            Attribute::Mail.to_string(),
+            vec![query.mail],
+            filter,
+            kopid.eventid,
+        )
+        .await
+    {
+        Ok(_) => Ok((group_view_reload(group_uuid), "").into_response()),
+        Err(err_code) => Ok((ErrorToastPartial {
+            err_code,
+            operation_id: kopid.eventid,
+        })
+        .into_response()),
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub(crate) struct ManagedByForm {
+    managed_by: String,
+}
+
+// Set (or, when blank, clear) the group's entry-managed-by delegated admin.
+pub(crate) async fn set_group_managed_by(
+    State(state): State<ServerState>,
+    Extension(kopid): Extension<KOpId>,
+    VerifiedClientInformation(client_auth_info): VerifiedClientInformation,
+    Path(group_uuid): Path<Uuid>,
+    Form(query): Form<ManagedByForm>,
+) -> axum::response::Result<Response> {
+    let filter = filter_all!(f_eq(Attribute::Class, EntryClass::Group.into()));
+    let trimmed = query.managed_by.trim().to_string();
+    let result = if trimmed.is_empty() {
+        state
+            .qe_w_ref
+            .handle_purgeattribute(
+                client_auth_info.clone(),
+                group_uuid.to_string(),
+                Attribute::EntryManagedBy.to_string(),
+                filter,
+                kopid.eventid,
+            )
+            .await
+    } else {
+        state
+            .qe_w_ref
+            .handle_setattribute(
+                client_auth_info.clone(),
+                group_uuid.to_string(),
+                Attribute::EntryManagedBy.to_string(),
+                vec![trimmed],
+                filter,
+                kopid.eventid,
+            )
+            .await
+    };
+    match result {
+        Ok(_) => Ok((group_view_reload(group_uuid), "").into_response()),
+        Err(err_code) => Ok((ErrorToastPartial {
+            err_code,
+            operation_id: kopid.eventid,
+        })
+        .into_response()),
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub(crate) struct GroupUnixForm {
+    gidnumber: Option<String>,
+}
+
+// Extend the group with POSIX/unix attributes (optional explicit gidnumber).
+pub(crate) async fn group_unix_extend(
+    State(state): State<ServerState>,
+    Extension(kopid): Extension<KOpId>,
+    VerifiedClientInformation(client_auth_info): VerifiedClientInformation,
+    Path(group_uuid): Path<Uuid>,
+    Form(query): Form<GroupUnixForm>,
+) -> axum::response::Result<Response> {
+    // Blank/invalid gidnumber -> None, letting the server allocate one.
+    let gidnumber = query
+        .gidnumber
+        .and_then(|s| s.trim().parse::<u32>().ok());
+    let gx = GroupUnixExtend { gidnumber };
+    match state
+        .qe_w_ref
+        .handle_idmgroupunixextend(
+            client_auth_info.clone(),
+            group_uuid.to_string(),
+            gx,
+            kopid.eventid,
+        )
+        .await
+    {
+        Ok(_) => Ok((group_view_reload(group_uuid), "").into_response()),
+        Err(err_code) => Ok((ErrorToastPartial {
+            err_code,
+            operation_id: kopid.eventid,
+        })
+        .into_response()),
+    }
 }
 
 fn scimentry_into_groupinfo(

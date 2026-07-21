@@ -205,7 +205,20 @@ pub fn admin_api_router() -> Router<ServerState> {
             post(groups::remove_member),
         )
         .route("/groups", post(groups::create_group))
-        .route("/group/{group_uuid}/delete", post(groups::delete_group));
+        .route("/group/{group_uuid}/delete", post(groups::delete_group))
+        .route("/group/{group_uuid}/add_mail", post(groups::add_group_mail))
+        .route(
+            "/group/{group_uuid}/remove_mail",
+            post(groups::remove_group_mail),
+        )
+        .route(
+            "/group/{group_uuid}/managed_by",
+            post(groups::set_group_managed_by),
+        )
+        .route(
+            "/group/{group_uuid}/unix_extend",
+            post(groups::group_unix_extend),
+        );
 
     let guarded_router = Router::new().layer(HxRequestGuardLayer::new("/ui"));
 
