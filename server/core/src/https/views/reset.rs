@@ -28,8 +28,8 @@ use base64::{engine::general_purpose, Engine as _};
 use futures_util::TryFutureExt;
 use kanidm_proto::internal::{
     CUCredState, CUExtPortal, CURegState, CURegWarning, CURequest, CUSessionToken, CUStatus,
-    CredentialDetail, OperationError, PasskeyDetail, PasswordFeedback, TotpAlgo, UiHint,
-    UserAuthToken, COOKIE_CU_SESSION_TOKEN,
+    CredentialDetail, CredentialDetailType, OperationError, PasskeyDetail, PasswordFeedback,
+    TotpAlgo, UiHint, UserAuthToken, COOKIE_CU_SESSION_TOKEN,
 };
 use kanidmd_lib::prelude::ClientAuthInfo;
 use qrcode::render::svg;
@@ -105,6 +105,10 @@ struct CredResetPartialView {
     unixcred: Option<CredentialDetail>,
     sshkeys_state: CUCredState,
     sshkeys: BTreeMap<String, SshKey>,
+    // Derived flags driving the guided 3-step wizard UI.
+    mfa_required: bool,
+    step_password_done: bool,
+    step_mfa_done: bool,
 }
 
 #[skip_serializing_none]
@@ -1151,6 +1155,26 @@ fn get_cu_partial(cu_status: CUStatus) -> CredResetPartialView {
         })
         .collect();
 
+    // A passkey (or attested passkey) satisfies MFA on its own; a password only
+    // satisfies it when it's a PasswordMfa (password + TOTP/webauthn).
+    let has_passkey = !passkeys.is_empty() || !attested_passkeys.is_empty();
+    let primary_is_mfa = matches!(
+        primary.as_ref().map(|c| &c.type_),
+        Some(CredentialDetailType::PasswordMfa(..))
+    );
+    let step_password_done = primary.is_some() || has_passkey;
+    let step_mfa_done = has_passkey || primary_is_mfa;
+    // Policy requires MFA when the session raised an MFA/passkey requirement warning.
+    let mfa_required = warnings.iter().any(|w| {
+        matches!(
+            w,
+            CURegWarning::MfaRequired
+                | CURegWarning::PasskeyRequired
+                | CURegWarning::AttestedPasskeyRequired
+                | CURegWarning::AttestedResidentKeyRequired
+        )
+    });
+
     CredResetPartialView {
         ext_cred_portal,
         can_commit,
@@ -1165,6 +1189,9 @@ fn get_cu_partial(cu_status: CUStatus) -> CredResetPartialView {
         unixcred,
         sshkeys_state,
         sshkeys: sshkeyss,
+        mfa_required,
+        step_password_done,
+        step_mfa_done,
     }
 }
 
