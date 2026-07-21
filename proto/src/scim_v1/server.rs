@@ -419,6 +419,9 @@ pub struct ScimGroup {
     pub name: String,
     pub description: Option<String>,
     pub members: Vec<ScimReference>,
+    pub mails: Vec<ScimMail>,
+    pub managed_by: Option<ScimReference>,
+    pub memberof: Vec<ScimReference>,
 }
 
 impl TryFrom<ScimEntryKanidm> for ScimGroup {
@@ -436,11 +439,36 @@ impl TryFrom<ScimEntryKanidm> for ScimGroup {
             .cloned()
             .unwrap_or_default();
 
+        let mails = scim_entry
+            .attrs
+            .get(&Attribute::Mail)
+            .and_then(|v| match v {
+                ScimValueKanidm::Mail(m) => Some(m.clone()),
+                _ => None,
+            })
+            .unwrap_or_default();
+
+        let managed_by = scim_entry
+            .attrs
+            .get(&Attribute::EntryManagedBy)
+            .and_then(|v| match v {
+                ScimValueKanidm::EntryReference(v) => Some(v.clone()),
+                _ => None,
+            });
+
+        let memberof = scim_entry
+            .get_scim_refs_attr(&Attribute::DirectMemberOf)
+            .cloned()
+            .unwrap_or_default();
+
         Ok(ScimGroup {
             uuid,
             name,
             description,
             members,
+            mails,
+            managed_by,
+            memberof,
         })
     }
 }
