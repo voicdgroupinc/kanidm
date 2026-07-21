@@ -30,10 +30,10 @@
                autocomplete="off" placeholder="Jane Smith">
     </div>
     <div class="mb-3">
-        <label for="create-person-mail" class="form-label fw-bold">Email
-            <span class="fw-normal text-body-secondary">(optional)</span></label>
-        <input type="email" class="form-control" id="create-person-mail" name="mail"
+        <label for="create-person-mail" class="form-label fw-bold">Email</label>
+        <input type="email" class="form-control" id="create-person-mail" name="mail" required
                autocomplete="off" placeholder="jane@example.com">
+        <div class="form-text">Required — used to match the user for app SSO (e.g. OpsPortal).</div>
     </div>
     <button type="submit" class="btn btn-primary">Create person</button>
     <a href="/ui/admin/persons" hx-target="#main" class="btn btn-secondary">Cancel</a>

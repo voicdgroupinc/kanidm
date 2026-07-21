@@ -151,7 +151,7 @@ pub(crate) async fn view_person_view_get(
     let member_uuids: std::collections::BTreeSet<Uuid> =
         person.groups.iter().map(|g| g.uuid).collect();
     let addable_groups: Vec<String> =
-        super::list_named_entries(&state, &kopid, &client_auth_info, EntryClass::Group)
+        super::list_manageable_groups(&state, &kopid, &client_auth_info)
             .await
             .into_iter()
             .filter(|(uuid, _)| !member_uuids.contains(uuid))
@@ -270,13 +270,20 @@ pub(crate) async fn create_person(
     // Form must be the last parameter because it consumes the request body
     Form(query): Form<CreatePersonForm>,
 ) -> axum::response::Result<Response> {
+    // Email is required — downstream apps (e.g. OpsPortal) match SSO users by the
+    // email claim, so an account with no mail can't complete SSO.
+    let Some(mail) = query.mail.filter(|m| !m.trim().is_empty()) else {
+        return Ok((ErrorToastPartial {
+            err_code: OperationError::MissingAttribute(Attribute::Mail),
+            operation_id: kopid.eventid,
+        })
+        .into_response());
+    };
+
     let mut attrs: BTreeMap<String, Vec<String>> = BTreeMap::new();
     attrs.insert(Attribute::Name.to_string(), vec![query.name]);
     attrs.insert(Attribute::DisplayName.to_string(), vec![query.displayname]);
-    // axum deserializes an empty field to None, so a present-but-empty mail is skipped.
-    if let Some(mail) = query.mail.filter(|m| !m.is_empty()) {
-        attrs.insert(Attribute::Mail.to_string(), vec![mail]);
-    }
+    attrs.insert(Attribute::Mail.to_string(), vec![mail]);
     let classes: Vec<String> = vec![
         EntryClass::Person.into(),
         EntryClass::Account.into(),

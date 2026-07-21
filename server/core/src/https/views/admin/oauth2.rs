@@ -28,7 +28,7 @@ use kanidmd_lib::filter::{f_eq, Filter};
 use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
-const OAUTH2_ATTRIBUTES: [Attribute; 8] = [
+const OAUTH2_ATTRIBUTES: [Attribute; 9] = [
     Attribute::Class,
     Attribute::Name,
     Attribute::DisplayName,
@@ -37,6 +37,7 @@ const OAUTH2_ATTRIBUTES: [Attribute; 8] = [
     Attribute::OAuth2RsOrigin,
     Attribute::OAuth2RsScopeMap,
     Attribute::Image,
+    Attribute::OAuth2RefreshTokenExpiry,
 ];
 
 fn attr_string(entry: &ScimEntryKanidm, attr: &Attribute) -> String {
@@ -107,10 +108,12 @@ struct Oauth2DetailPartial {
     basic_secret: Option<String>,
     is_public: bool,
     can_rw: bool,
-    // All group names, for the scope-map group dropdown.
+    // Manageable group names, for the scope-map group dropdown.
     groups: Vec<String>,
     // Whether this client currently has an icon/logo set.
     has_image: bool,
+    // Per-app refresh-token lifetime in seconds (blank = server default).
+    refresh_token_expiry: Option<String>,
 }
 
 #[derive(Template, WebTemplate)]
@@ -237,12 +240,16 @@ pub(crate) async fn view_oauth2_detail_get(
     };
 
     let has_image = entry.attrs.contains_key(&Attribute::Image);
-    let groups: Vec<String> =
-        super::list_named_entries(&state, &kopid, &client_auth_info, EntryClass::Group)
-            .await
-            .into_iter()
-            .map(|(_, name)| name)
-            .collect();
+    let groups: Vec<String> = super::list_manageable_groups(&state, &kopid, &client_auth_info)
+        .await
+        .into_iter()
+        .map(|(_, name)| name)
+        .collect();
+    let refresh_token_expiry = match entry.attrs.get(&Attribute::OAuth2RefreshTokenExpiry) {
+        Some(ScimValueKanidm::Uint32(v)) => Some(v.to_string()),
+        Some(ScimValueKanidm::Integer(v)) => Some(v.to_string()),
+        _ => None,
+    };
 
     let partial = Oauth2DetailPartial {
         name: attr_string(&entry, &Attribute::Name),
@@ -256,6 +263,7 @@ pub(crate) async fn view_oauth2_detail_get(
         can_rw,
         groups,
         has_image,
+        refresh_token_expiry,
     };
 
     let push_url = HxPushUrl(format!("/ui/admin/oauth2/{rs_name}/view"));
@@ -379,6 +387,54 @@ pub(crate) async fn set_oauth2_landing(
         )
         .await
     {
+        Ok(_) => Ok((oauth2_view_reload(&rs_name), "").into_response()),
+        Err(err_code) => Ok((ErrorToastPartial {
+            err_code,
+            operation_id: kopid.eventid,
+        })
+        .into_response()),
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub(crate) struct RefreshTtlForm {
+    seconds: String,
+}
+
+// Set (or, when blank, clear -> server default) this client's refresh-token lifetime.
+pub(crate) async fn set_oauth2_refresh_ttl(
+    State(state): State<ServerState>,
+    Extension(kopid): Extension<KOpId>,
+    VerifiedClientInformation(client_auth_info): VerifiedClientInformation,
+    Path(rs_name): Path<String>,
+    Form(query): Form<RefreshTtlForm>,
+) -> axum::response::Result<Response> {
+    let trimmed = query.seconds.trim().to_string();
+    let result = if trimmed.is_empty() {
+        state
+            .qe_w_ref
+            .handle_purgeattribute(
+                client_auth_info.clone(),
+                rs_name.clone(),
+                Attribute::OAuth2RefreshTokenExpiry.to_string(),
+                oauth2_class_filter(),
+                kopid.eventid,
+            )
+            .await
+    } else {
+        state
+            .qe_w_ref
+            .handle_setattribute(
+                client_auth_info.clone(),
+                rs_name.clone(),
+                Attribute::OAuth2RefreshTokenExpiry.to_string(),
+                vec![trimmed],
+                oauth2_class_filter(),
+                kopid.eventid,
+            )
+            .await
+    };
+    match result {
         Ok(_) => Ok((oauth2_view_reload(&rs_name), "").into_response()),
         Err(err_code) => Ok((ErrorToastPartial {
             err_code,

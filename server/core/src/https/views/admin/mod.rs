@@ -56,6 +56,51 @@ pub(crate) async fn list_named_entries(
     }
 }
 
+/// Groups the caller can add members to (member-modify access) — (uuid, name), sorted.
+/// Used to populate group pickers so only usable groups are offered; built-in/high-privilege
+/// or otherwise read-only groups are excluded automatically via effective access.
+pub(crate) async fn list_manageable_groups(
+    state: &ServerState,
+    kopid: &KOpId,
+    client_auth_info: &ClientAuthInfo,
+) -> Vec<(Uuid, String)> {
+    let filter = ScimFilter::Equal(Attribute::Class.into(), EntryClass::Group.into());
+    let res = state
+        .qe_r_ref
+        .scim_entry_search(
+            client_auth_info.clone(),
+            kopid.eventid,
+            filter,
+            ScimEntryGetQuery {
+                attributes: Some(vec![Attribute::Name]),
+                ext_access_check: true,
+                sort_by: Some(Attribute::Name),
+                count: NonZeroU64::new(1000),
+                ..Default::default()
+            },
+        )
+        .await;
+    match res {
+        Ok(base) => base
+            .resources
+            .iter()
+            .filter_map(|e| {
+                let name = match e.attrs.get(&Attribute::Name) {
+                    Some(ScimValueKanidm::String(s)) => s.clone(),
+                    _ => return None,
+                };
+                let access = e.ext_access_check.as_ref()?;
+                if access.modify_present.check(&Attribute::Member) {
+                    Some((e.header.id, name))
+                } else {
+                    None
+                }
+            })
+            .collect(),
+        Err(_) => Vec::new(),
+    }
+}
+
 /// Default number of rows per page in the person/group lists.
 pub(crate) const DEFAULT_PER_PAGE: u64 = 100;
 
@@ -279,6 +324,10 @@ pub fn admin_api_router() -> Router<ServerState> {
             post(groups::group_unix_extend),
         )
         .route("/settings/domain", post(settings::set_domain_settings))
+        .route(
+            "/settings/account_policy",
+            post(settings::set_account_policy),
+        )
         .route("/settings/badlist/add", post(settings::add_badlist))
         .route("/settings/badlist/remove", post(settings::remove_badlist))
         .route("/settings/denied_name/add", post(settings::add_denied_name))
@@ -288,6 +337,10 @@ pub fn admin_api_router() -> Router<ServerState> {
         )
         .route("/oauth2", post(oauth2::create_oauth2))
         .route("/oauth2/{rs_name}/landing", post(oauth2::set_oauth2_landing))
+        .route(
+            "/oauth2/{rs_name}/refresh_ttl",
+            post(oauth2::set_oauth2_refresh_ttl),
+        )
         .route(
             "/oauth2/{rs_name}/add_origin",
             post(oauth2::add_oauth2_origin),

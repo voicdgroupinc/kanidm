@@ -16,7 +16,9 @@ use kanidm_proto::attribute::Attribute;
 use kanidm_proto::internal::UserAuthToken;
 use kanidm_proto::scim_v1::server::{ScimEntryKanidm, ScimValueKanidm};
 use kanidm_proto::scim_v1::ScimEntryGetQuery;
-use kanidmd_lib::constants::{EntryClass, STR_UUID_DOMAIN_INFO, STR_UUID_SYSTEM_CONFIG};
+use kanidmd_lib::constants::{
+    EntryClass, STR_UUID_DOMAIN_INFO, STR_UUID_IDM_ALL_ACCOUNTS, STR_UUID_SYSTEM_CONFIG,
+};
 use kanidmd_lib::filter::{f_eq, Filter};
 use serde::{Deserialize, Serialize};
 
@@ -29,6 +31,17 @@ const DOMAIN_ATTRIBUTES: [Attribute; 3] = [
 
 // System-config attributes surfaced on the settings page.
 const SYSTEM_ATTRIBUTES: [Attribute; 2] = [Attribute::BadlistPassword, Attribute::DeniedName];
+
+// Global account-policy attributes (on idm_all_accounts, applies to everyone).
+const POLICY_ATTRIBUTES: [Attribute; 2] = [Attribute::AuthSessionExpiry, Attribute::PrivilegeExpiry];
+
+fn attr_uint(entry: &ScimEntryKanidm, attr: &Attribute) -> String {
+    match entry.attrs.get(attr) {
+        Some(ScimValueKanidm::Uint32(v)) => v.to_string(),
+        Some(ScimValueKanidm::Integer(v)) => v.to_string(),
+        _ => String::new(),
+    }
+}
 
 #[derive(Template, WebTemplate)]
 #[template(path = "admin/admin_panel_template.html")]
@@ -46,6 +59,10 @@ struct SettingsPartialView {
     // without access can't read those entries, so each section is shown only when readable.
     domain_available: bool,
     system_available: bool,
+    // Global account-policy (session/privilege expiry) governed by idm_account_policy_admins.
+    policy_available: bool,
+    auth_session_expiry: String,
+    privilege_expiry: String,
     domain_display_name: String,
     domain_ldap_basedn: String,
     domain_ssid: String,
@@ -112,10 +129,34 @@ pub(crate) async fn view_settings_get(
         .await
         .ok();
 
+    let policy_entry: Option<ScimEntryKanidm> = state
+        .qe_r_ref
+        .scim_entry_id_get(
+            client_auth_info.clone(),
+            kopid.eventid,
+            STR_UUID_IDM_ALL_ACCOUNTS.to_string(),
+            EntryClass::Group,
+            ScimEntryGetQuery {
+                attributes: Some(Vec::from(POLICY_ATTRIBUTES)),
+                ..Default::default()
+            },
+        )
+        .await
+        .ok();
+
     let partial = SettingsPartialView {
         can_rw,
         domain_available: domain_entry.is_some(),
         system_available: system_entry.is_some(),
+        policy_available: policy_entry.is_some(),
+        auth_session_expiry: policy_entry
+            .as_ref()
+            .map(|e| attr_uint(e, &Attribute::AuthSessionExpiry))
+            .unwrap_or_default(),
+        privilege_expiry: policy_entry
+            .as_ref()
+            .map(|e| attr_uint(e, &Attribute::PrivilegeExpiry))
+            .unwrap_or_default(),
         domain_display_name: domain_entry
             .as_ref()
             .map(|e| attr_string(e, &Attribute::DomainDisplayName))
@@ -159,6 +200,77 @@ fn domain_filter() -> Filter<kanidmd_lib::filter::FilterInvalid> {
 
 fn system_filter() -> Filter<kanidmd_lib::filter::FilterInvalid> {
     filter_all!(f_eq(Attribute::Class, EntryClass::SystemConfig.into()))
+}
+
+fn policy_filter() -> Filter<kanidmd_lib::filter::FilterInvalid> {
+    filter_all!(f_eq(Attribute::Class, EntryClass::Group.into()))
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub(crate) struct AccountPolicyForm {
+    auth_session_expiry: Option<String>,
+    privilege_expiry: Option<String>,
+}
+
+// Set (or clear when blank) a global account-policy expiry attribute on idm_all_accounts.
+async fn apply_policy_attr(
+    state: &ServerState,
+    kopid: &KOpId,
+    client_auth_info: &VerifiedClientInformation,
+    attr: Attribute,
+    value: Option<String>,
+) -> Result<(), kanidm_proto::internal::OperationError> {
+    let VerifiedClientInformation(cai) = client_auth_info;
+    match value.map(|v| v.trim().to_string()) {
+        Some(v) if !v.is_empty() => {
+            state
+                .qe_w_ref
+                .handle_setattribute(
+                    cai.clone(),
+                    STR_UUID_IDM_ALL_ACCOUNTS.to_string(),
+                    attr.to_string(),
+                    vec![v],
+                    policy_filter(),
+                    kopid.eventid,
+                )
+                .await
+        }
+        _ => {
+            state
+                .qe_w_ref
+                .handle_purgeattribute(
+                    cai.clone(),
+                    STR_UUID_IDM_ALL_ACCOUNTS.to_string(),
+                    attr.to_string(),
+                    policy_filter(),
+                    kopid.eventid,
+                )
+                .await
+        }
+    }
+}
+
+pub(crate) async fn set_account_policy(
+    State(state): State<ServerState>,
+    Extension(kopid): Extension<KOpId>,
+    client_auth_info: VerifiedClientInformation,
+    Form(query): Form<AccountPolicyForm>,
+) -> axum::response::Result<Response> {
+    for (attr, value) in [
+        (Attribute::AuthSessionExpiry, query.auth_session_expiry),
+        (Attribute::PrivilegeExpiry, query.privilege_expiry),
+    ] {
+        if let Err(err_code) =
+            apply_policy_attr(&state, &kopid, &client_auth_info, attr, value).await
+        {
+            return Ok((ErrorToastPartial {
+                err_code,
+                operation_id: kopid.eventid,
+            })
+            .into_response());
+        }
+    }
+    Ok((settings_reload(), "").into_response())
 }
 
 fn settings_reload() -> HxLocation {
