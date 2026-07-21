@@ -7,6 +7,7 @@ use url::form_urlencoded;
 
 pub(crate) mod groups;
 pub(crate) mod persons;
+pub(crate) mod settings;
 
 /// Default number of rows per page in the person/group lists.
 pub(crate) const DEFAULT_PER_PAGE: u64 = 100;
@@ -146,7 +147,8 @@ pub fn admin_router() -> Router<ServerState> {
         )
         .route("/groups", get(groups::view_groups_get))
         .route("/groups/create", get(groups::view_group_create_get))
-        .route("/group/{group_uuid}/view", get(groups::view_group_view_get));
+        .route("/group/{group_uuid}/view", get(groups::view_group_view_get))
+        .route("/settings", get(settings::view_settings_get));
 
     let guarded_router = Router::new().layer(HxRequestGuardLayer::new("/ui"));
 
@@ -218,6 +220,14 @@ pub fn admin_api_router() -> Router<ServerState> {
         .route(
             "/group/{group_uuid}/unix_extend",
             post(groups::group_unix_extend),
+        )
+        .route("/settings/domain", post(settings::set_domain_settings))
+        .route("/settings/badlist/add", post(settings::add_badlist))
+        .route("/settings/badlist/remove", post(settings::remove_badlist))
+        .route("/settings/denied_name/add", post(settings::add_denied_name))
+        .route(
+            "/settings/denied_name/remove",
+            post(settings::remove_denied_name),
         );
 
     let guarded_router = Router::new().layer(HxRequestGuardLayer::new("/ui"));

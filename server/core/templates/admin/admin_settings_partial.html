@@ -1,0 +1,118 @@
+(% extends "admin/admin_partial_base.html" %)
+
+(% block settings_item_extra_classes %)active(% endblock %)
+
+(% block admin_page %)
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item active" aria-current="page">Settings</li>
+    </ol>
+</nav>
+
+(% if !can_rw %)
+<div class="alert alert-secondary col-12 col-md-10 col-lg-8">
+    Unlock your session to change settings. <a href="/ui/unlock">Unlock Edit 🔒</a>
+</div>
+(% endif %)
+
+<div class="card mb-3 col-12 col-md-10 col-lg-8">
+    <div class="card-body">
+        <h5 class="card-title">Domain</h5>
+        <form hx-post="/ui/api/admin/settings/domain"
+              hx-target=".toast-container" hx-swap="beforeend">
+            <div class="mb-3">
+                <label class="form-label fw-bold" for="display_name">Display name</label>
+                <input type="text" class="form-control" id="display_name" name="display_name"
+                       value="(( domain_display_name ))" (% if !can_rw %)disabled(% endif %)>
+            </div>
+            <div class="mb-3">
+                <label class="form-label fw-bold" for="ldap_basedn">LDAP base DN
+                    <span class="fw-normal text-body-secondary">(optional)</span></label>
+                <input type="text" class="form-control" id="ldap_basedn" name="ldap_basedn"
+                       value="(( domain_ldap_basedn ))" (% if !can_rw %)disabled(% endif %)>
+            </div>
+            <div class="mb-3">
+                <label class="form-label fw-bold" for="ssid">Wireless SSID
+                    <span class="fw-normal text-body-secondary">(optional)</span></label>
+                <input type="text" class="form-control" id="ssid" name="ssid"
+                       value="(( domain_ssid ))" (% if !can_rw %)disabled(% endif %)>
+            </div>
+            (% if can_rw %)
+            <button type="submit" class="btn btn-primary">Save domain settings</button>
+            (% endif %)
+        </form>
+    </div>
+</div>
+
+<div class="card mb-3 col-12 col-md-10 col-lg-8">
+    <div class="card-body">
+        <h5 class="card-title">Password badlist</h5>
+        <p class="text-body-secondary">Passwords on this list are rejected for all accounts.</p>
+        (% if can_rw %)
+        <form class="mb-2" hx-post="/ui/api/admin/settings/badlist/add"
+              hx-target=".toast-container" hx-swap="beforeend">
+            <div class="input-group">
+                <input type="text" class="form-control" name="value" required autocomplete="off"
+                       placeholder="badpassword123" aria-label="Password to badlist">
+                <button class="btn btn-primary" type="submit">Add</button>
+            </div>
+        </form>
+        (% endif %)
+        (% if badlist.len() == 0 %)
+        <p class="mb-0 text-body-secondary">The badlist is empty.</p>
+        (% else %)
+        <ol class="list-group">
+            (% for value in badlist %)
+            <li class="list-group-item d-flex flex-row justify-content-between align-items-center">
+                <code class="text-break me-2">(( value ))</code>
+                (% if can_rw %)
+                <form hx-post="/ui/api/admin/settings/badlist/remove"
+                      hx-target=".toast-container" hx-swap="beforeend">
+                    <input type="hidden" name="value" value="(( value ))">
+                    <button type="submit" class="btn btn-secondary btn-sm kanidm-remove-list-entry">Remove</button>
+                </form>
+                (% endif %)
+            </li>
+            (% endfor %)
+        </ol>
+        (% endif %)
+    </div>
+</div>
+
+<div class="card mb-3 col-12 col-md-10 col-lg-8">
+    <div class="card-body">
+        <h5 class="card-title">Denied names</h5>
+        <p class="text-body-secondary">Usernames on this list cannot be created or used.</p>
+        (% if can_rw %)
+        <form class="mb-2" hx-post="/ui/api/admin/settings/denied_name/add"
+              hx-target=".toast-container" hx-swap="beforeend">
+            <div class="input-group">
+                <input type="text" class="form-control" name="value" required autocomplete="off"
+                       placeholder="root" aria-label="Name to deny">
+                <button class="btn btn-primary" type="submit">Add</button>
+            </div>
+        </form>
+        (% endif %)
+        (% if denied_names.len() == 0 %)
+        <p class="mb-0 text-body-secondary">No denied names.</p>
+        (% else %)
+        <ol class="list-group">
+            (% for value in denied_names %)
+            <li class="list-group-item d-flex flex-row justify-content-between align-items-center">
+                <code class="text-break me-2">(( value ))</code>
+                (% if can_rw %)
+                <form hx-post="/ui/api/admin/settings/denied_name/remove"
+                      hx-target=".toast-container" hx-swap="beforeend">
+                    <input type="hidden" name="value" value="(( value ))">
+                    <button type="submit" class="btn btn-secondary btn-sm kanidm-remove-list-entry">Remove</button>
+                </form>
+                (% endif %)
+            </li>
+            (% endfor %)
+        </ol>
+        (% endif %)
+    </div>
+</div>
+
+<div id="toast-container" class="toast-container position-fixed bottom-0 end-0 p-3"></div>
+(% endblock %)
