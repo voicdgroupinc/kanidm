@@ -47,6 +47,42 @@
 </div>
 (% endif %)
 
+(% if !policy_available %)
+<div class="alert alert-secondary col-12 col-md-10 col-lg-8">
+    <span class="fw-bold">Session &amp; privilege expiry</span> require membership in
+    <code>idm_account_policy_admins</code> — your account can't view or change them.
+</div>
+(% else %)
+<div class="card mb-3 col-12 col-md-10 col-lg-8">
+    <div class="card-body">
+        <h5 class="card-title">Session &amp; privilege expiry
+            <span class="fw-normal text-body-secondary">(applies to all accounts)</span></h5>
+        <form hx-post="/ui/api/admin/settings/account_policy"
+              hx-target=".toast-container" hx-swap="beforeend">
+            <div class="mb-3">
+                <label class="form-label fw-bold" for="auth_session_expiry">Login session lifetime
+                    <span class="fw-normal text-body-secondary">(seconds; blank = default)</span></label>
+                <input type="number" min="0" class="form-control" id="auth_session_expiry"
+                       name="auth_session_expiry" value="(( auth_session_expiry ))"
+                       (% if !can_rw %)disabled(% endif %)>
+                <div class="form-text">How long a login lasts before users must re-authenticate.</div>
+            </div>
+            <div class="mb-3">
+                <label class="form-label fw-bold" for="privilege_expiry">Privileged (edit) window
+                    <span class="fw-normal text-body-secondary">(seconds; blank = default)</span></label>
+                <input type="number" min="0" class="form-control" id="privilege_expiry"
+                       name="privilege_expiry" value="(( privilege_expiry ))"
+                       (% if !can_rw %)disabled(% endif %)>
+                <div class="form-text">How long an unlocked/edit session stays privileged before re-locking.</div>
+            </div>
+            (% if can_rw %)
+            <button type="submit" class="btn btn-primary">Save expiry settings</button>
+            (% endif %)
+        </form>
+    </div>
+</div>
+(% endif %)
+
 (% if !system_available %)
 <div class="alert alert-secondary col-12 col-md-10 col-lg-8">
     <span class="fw-bold">Password badlist &amp; denied names</span> require membership in
@@ -55,8 +91,10 @@
 (% else %)
 <div class="card mb-3 col-12 col-md-10 col-lg-8">
     <div class="card-body">
-        <h5 class="card-title">Password badlist</h5>
-        <p class="text-body-secondary">Passwords on this list are rejected for all accounts.</p>
+        <details>
+        <summary class="card-title h5 mb-0" style="cursor:pointer;">Password badlist
+            <span class="fw-normal text-body-secondary">((  badlist.len() )) entries — click to manage</span></summary>
+        <p class="text-body-secondary mt-2">Passwords on this list are rejected for all accounts.</p>
         (% if can_rw %)
         <form class="mb-2" hx-post="/ui/api/admin/settings/badlist/add"
               hx-target=".toast-container" hx-swap="beforeend">
@@ -85,6 +123,7 @@
             (% endfor %)
         </ol>
         (% endif %)
+        </details>
     </div>
 </div>
 

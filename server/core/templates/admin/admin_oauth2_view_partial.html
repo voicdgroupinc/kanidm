@@ -49,6 +49,21 @@
             <div class="col-12 col-md-3"><button class="btn btn-primary w-100" type="submit">Save</button></div>
             (% endif %)
         </form>
+
+        <form class="row mt-3 g-2 align-items-end"
+              hx-post="/ui/api/admin/oauth2/(( name ))/refresh_ttl"
+              hx-target=".toast-container" hx-swap="beforeend">
+            <div class="col-12 col-md-9">
+                <label class="form-label fw-bold" for="refresh_ttl">Refresh token lifetime
+                    <span class="fw-normal text-body-secondary">(seconds; blank = server default)</span></label>
+                <input type="number" min="0" class="form-control" id="refresh_ttl" name="seconds"
+                       value="(( refresh_token_expiry.as_deref().unwrap_or_default() ))"
+                       (% if !can_rw %)disabled(% endif %)>
+            </div>
+            (% if can_rw %)
+            <div class="col-12 col-md-3"><button class="btn btn-primary w-100" type="submit">Save</button></div>
+            (% endif %)
+        </form>
     </div>
 </div>
 
