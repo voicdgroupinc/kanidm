@@ -158,17 +158,23 @@
     <div class="card-body">
         <h5 class="card-title">Groups</h5>
         (% if can_rw %)
+        (% if addable_groups.len() == 0 %)
+        <p class="mb-2 text-body-secondary">Already a member of every group.</p>
+        (% else %)
         <form class="mb-2"
               hx-post="/ui/api/admin/person/(( person.uuid ))/add_group"
               hx-target=".toast-container"
               hx-swap="beforeend">
             <div class="input-group">
-                <input type="text" class="form-control" name="group" required
-                       autocomplete="off" placeholder="group name or uuid"
-                       aria-label="Group to add this person to">
+                <select class="form-select" name="group" aria-label="Group to add this person to">
+                    (% for g in addable_groups %)
+                    <option value="(( g ))">(( g ))</option>
+                    (% endfor %)
+                </select>
                 <button class="btn btn-primary" type="submit">Add to group</button>
             </div>
         </form>
+        (% endif %)
         (% endif %)
         (% if person.groups.len() == 0 %)
         <p class="mb-0 text-body-secondary">Not a direct member of any group.</p>
