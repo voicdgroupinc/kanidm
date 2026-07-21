@@ -9,11 +9,7 @@
     </ol>
 </nav>
 
-(% if !can_rw %)
-<div class="alert alert-secondary col-12 col-md-10 col-lg-8">
-    Unlock your session to change settings. <a href="/ui/unlock">Unlock Edit 🔒</a>
-</div>
-(% endif %)
+(% include "admin/admin_unlock_banner.html" %)
 
 (% if !domain_available %)
 <div class="alert alert-secondary col-12 col-md-10 col-lg-8">
