@@ -331,6 +331,9 @@ async fn get_groups_info(
         ScimSortOrder::Ascending
     };
 
+    // Fetch all matching groups (sorted + q-filtered server-side) so we can hide the
+    // ones the caller can't manage, then paginate the manageable set in-app. Group
+    // counts are small, so fetching up to 1000 is fine.
     let base: ScimListResponse = state
         .qe_r_ref
         .scim_entry_search(
@@ -342,19 +345,28 @@ async fn get_groups_info(
                 ext_access_check: true,
                 sort_by: Some(sort_attr),
                 sort_order: Some(sort_order),
-                start_index: NonZeroU64::new(pager.start_index()),
-                count: NonZeroU64::new(pager.per_page),
+                count: NonZeroU64::new(1000),
                 ..Default::default()
             },
         )
         .await?;
 
-    let total = base.total_results;
-    let groups: Vec<_> = base
+    // Keep only groups the caller can actually manage (modify some attribute) — this
+    // hides Kanidm's built-in/high-privilege plumbing the caller has no rights on.
+    let manageable_attrs = std::collections::BTreeSet::from(GROUP_ATTRIBUTES);
+    let manageable: Vec<(ScimGroup, ScimEffectiveAccess)> = base
         .resources
         .into_iter()
-        // TODO: Filtering away unsuccessful entries may not be desired.
         .filter_map(scimentry_into_groupinfo)
+        .filter(|(_, access)| access.modify_present.check_any(&manageable_attrs))
+        .collect();
+
+    let total = manageable.len() as u64;
+    let offset = ((pager.page - 1) * pager.per_page) as usize;
+    let groups: Vec<_> = manageable
+        .into_iter()
+        .skip(offset)
+        .take(pager.per_page as usize)
         .collect();
 
     Ok((groups, total))
