@@ -6,6 +6,7 @@ use serde::Deserialize;
 use url::form_urlencoded;
 
 pub(crate) mod groups;
+pub(crate) mod oauth2;
 pub(crate) mod persons;
 pub(crate) mod settings;
 
@@ -148,7 +149,13 @@ pub fn admin_router() -> Router<ServerState> {
         .route("/groups", get(groups::view_groups_get))
         .route("/groups/create", get(groups::view_group_create_get))
         .route("/group/{group_uuid}/view", get(groups::view_group_view_get))
-        .route("/settings", get(settings::view_settings_get));
+        .route("/settings", get(settings::view_settings_get))
+        .route("/oauth2", get(oauth2::view_oauth2_get))
+        .route("/oauth2/create", get(oauth2::view_oauth2_create_get))
+        .route(
+            "/oauth2/{rs_name}/view",
+            get(oauth2::view_oauth2_detail_get),
+        );
 
     let guarded_router = Router::new().layer(HxRequestGuardLayer::new("/ui"));
 
@@ -228,7 +235,26 @@ pub fn admin_api_router() -> Router<ServerState> {
         .route(
             "/settings/denied_name/remove",
             post(settings::remove_denied_name),
-        );
+        )
+        .route("/oauth2", post(oauth2::create_oauth2))
+        .route("/oauth2/{rs_name}/landing", post(oauth2::set_oauth2_landing))
+        .route(
+            "/oauth2/{rs_name}/add_origin",
+            post(oauth2::add_oauth2_origin),
+        )
+        .route(
+            "/oauth2/{rs_name}/remove_origin",
+            post(oauth2::remove_oauth2_origin),
+        )
+        .route(
+            "/oauth2/{rs_name}/add_scopemap",
+            post(oauth2::add_oauth2_scopemap),
+        )
+        .route(
+            "/oauth2/{rs_name}/remove_scopemap",
+            post(oauth2::remove_oauth2_scopemap),
+        )
+        .route("/oauth2/{rs_name}/delete", post(oauth2::delete_oauth2));
 
     let guarded_router = Router::new().layer(HxRequestGuardLayer::new("/ui"));
 

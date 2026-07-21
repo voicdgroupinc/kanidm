@@ -1,0 +1,145 @@
+(% extends "admin/admin_partial_base.html" %)
+
+(% block oauth2_item_extra_classes %)active(% endblock %)
+
+(% block admin_page %)
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="/ui/admin/oauth2" hx-target="#main">OAuth2 / OIDC clients</a></li>
+        <li class="breadcrumb-item active" aria-current="page">(( name ))</li>
+    </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h3 class="mb-0">
+        (( displayname ))
+        <span class="badge (% if is_public %)text-bg-info(% else %)text-bg-secondary(% endif %) align-middle">
+            (% if is_public %)Public(% else %)Confidential(% endif %)</span>
+    </h3>
+    <span class="text-body-secondary">(( spn ))</span>
+</div>
+
+<div class="card mb-3 col-12 col-md-10 col-lg-8">
+    <div class="card-body">
+        <h5 class="card-title">Client</h5>
+        <div class="row mt-2"><label class="col-12 col-md-3 fw-bold">Client ID</label>
+            <div class="col-12 col-md-9"><code>(( name ))</code></div></div>
+        (% if !is_public %)
+        <div class="row mt-2"><label class="col-12 col-md-3 fw-bold">Client secret</label>
+            <div class="col-12 col-md-9">
+                (% if let Some(secret) = basic_secret.as_ref() %)
+                <input type="text" class="form-control" readonly value="(( secret ))" aria-label="Client secret">
+                (% else %)
+                <span class="text-body-secondary">unavailable</span>
+                (% endif %)
+            </div></div>
+        (% endif %)
+
+        <form class="row mt-3 g-2 align-items-end"
+              hx-post="/ui/api/admin/oauth2/(( name ))/landing"
+              hx-target=".toast-container" hx-swap="beforeend">
+            <div class="col-12 col-md-9">
+                <label class="form-label fw-bold" for="landing">Landing URL</label>
+                <input type="url" class="form-control" id="landing" name="landing" value="(( landing ))"
+                       (% if !can_rw %)disabled(% endif %)>
+            </div>
+            (% if can_rw %)
+            <div class="col-12 col-md-3"><button class="btn btn-primary w-100" type="submit">Save</button></div>
+            (% endif %)
+        </form>
+    </div>
+</div>
+
+<div class="card mb-3 col-12 col-md-10 col-lg-8">
+    <div class="card-body">
+        <h5 class="card-title">Redirect URLs</h5>
+        (% if can_rw %)
+        <form class="mb-2" hx-post="/ui/api/admin/oauth2/(( name ))/add_origin"
+              hx-target=".toast-container" hx-swap="beforeend">
+            <div class="input-group">
+                <input type="url" class="form-control" name="origin" required autocomplete="off"
+                       placeholder="https://app.example.com/oauth2/callback" aria-label="Redirect URL to add">
+                <button class="btn btn-primary" type="submit">Add</button>
+            </div>
+        </form>
+        (% endif %)
+        (% if origins.len() == 0 %)
+        <p class="mb-0 text-body-secondary">No redirect URLs.</p>
+        (% else %)
+        <ol class="list-group">
+            (% for origin in origins %)
+            <li class="list-group-item d-flex flex-row justify-content-between align-items-center">
+                <code class="text-break me-2">(( origin ))</code>
+                (% if can_rw %)
+                <form hx-post="/ui/api/admin/oauth2/(( name ))/remove_origin"
+                      hx-confirm="Remove redirect URL (( origin ))?"
+                      hx-target=".toast-container" hx-swap="beforeend">
+                    <input type="hidden" name="origin" value="(( origin ))">
+                    <button type="submit" class="btn btn-secondary btn-sm kanidm-remove-list-entry">Remove</button>
+                </form>
+                (% endif %)
+            </li>
+            (% endfor %)
+        </ol>
+        (% endif %)
+    </div>
+</div>
+
+<div class="card mb-3 col-12 col-md-10 col-lg-8">
+    <div class="card-body">
+        <h5 class="card-title">Scope maps</h5>
+        <p class="text-body-secondary">Which OAuth2 scopes members of a group receive.</p>
+        (% if can_rw %)
+        <form class="row g-2 mb-2" hx-post="/ui/api/admin/oauth2/(( name ))/add_scopemap"
+              hx-target=".toast-container" hx-swap="beforeend">
+            <div class="col-12 col-md-5">
+                <input type="text" class="form-control" name="group" required autocomplete="off"
+                       placeholder="group name or uuid" aria-label="Group">
+            </div>
+            <div class="col">
+                <input type="text" class="form-control" name="scopes" autocomplete="off"
+                       placeholder="openid email profile" aria-label="Scopes (space separated)">
+            </div>
+            <div class="col-12 col-md-auto">
+                <button class="btn btn-primary w-100" type="submit">Set</button>
+            </div>
+        </form>
+        (% endif %)
+        (% if scope_maps.len() == 0 %)
+        <p class="mb-0 text-body-secondary">No scope maps.</p>
+        (% else %)
+        <ol class="list-group">
+            (% for sm in scope_maps %)
+            <li class="list-group-item d-flex flex-row justify-content-between align-items-center">
+                <div><span class="fw-bold">(( sm.group ))</span>
+                    <span class="text-body-secondary">→ (( sm.scopes|join(", ") ))</span></div>
+                (% if can_rw %)
+                <form hx-post="/ui/api/admin/oauth2/(( name ))/remove_scopemap"
+                      hx-confirm="Remove scope map for (( sm.group ))?"
+                      hx-target=".toast-container" hx-swap="beforeend">
+                    <input type="hidden" name="group" value="(( sm.group ))">
+                    <button type="submit" class="btn btn-secondary btn-sm kanidm-remove-list-entry">Remove</button>
+                </form>
+                (% endif %)
+            </li>
+            (% endfor %)
+        </ol>
+        (% endif %)
+    </div>
+</div>
+
+(% if can_rw %)
+<div class="card border-danger mb-3 col-12 col-md-10 col-lg-8">
+    <div class="card-body">
+        <h5 class="card-title text-danger">Danger zone</h5>
+        <form hx-post="/ui/api/admin/oauth2/(( name ))/delete"
+              hx-confirm="Delete OAuth2 client (( name ))? This cannot be undone."
+              hx-target=".toast-container" hx-swap="beforeend">
+            <button type="submit" class="btn btn-danger">Delete client</button>
+        </form>
+    </div>
+</div>
+(% endif %)
+
+<div id="toast-container" class="toast-container position-fixed bottom-0 end-0 p-3"></div>
+(% endblock %)
