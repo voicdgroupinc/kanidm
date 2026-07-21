@@ -8,7 +8,8 @@ use crate::https::views::{ErrorToastPartial, Urls};
 use crate::https::ServerState;
 use askama::Template;
 use askama_web::WebTemplate;
-use axum::extract::{Path, State};
+use super::{ListParams, Pagination};
+use axum::extract::{Path, Query, State};
 use axum::response::{IntoResponse, Response};
 use axum::Extension;
 use axum_extra::extract::Form;
@@ -20,7 +21,8 @@ use kanidm_proto::scim_v1::server::{
     ScimEffectiveAccess, ScimEntryKanidm, ScimListResponse, ScimPerson, ScimValueKanidm,
 };
 use kanidm_proto::scim_v1::ScimEntryGetQuery;
-use kanidm_proto::scim_v1::ScimFilter;
+use kanidm_proto::scim_v1::{JsonValue, ScimFilter, ScimSortOrder};
+use std::num::NonZeroU64;
 use kanidm_proto::v1::Entry as ProtoEntry;
 use kanidmd_lib::constants::EntryClass;
 use kanidmd_lib::filter::{f_eq, f_id, Filter};
@@ -62,6 +64,7 @@ struct PersonsPartialView {
     // Kanidm's default ACPs is granted together with create. Used to hide the
     // "Create person" button from non-admins; the create itself is ACP-enforced.
     can_create: bool,
+    pager: Pagination,
 }
 
 #[derive(Template, WebTemplate)]
@@ -172,17 +175,22 @@ pub(crate) async fn view_persons_get(
     Extension(kopid): Extension<KOpId>,
     DomainInfo(domain_info): DomainInfo,
     VerifiedClientInformation(client_auth_info): VerifiedClientInformation,
+    Query(params): Query<ListParams>,
 ) -> axum::response::Result<Response> {
-    let persons = get_persons_info(state, &kopid, client_auth_info.clone()).await?;
+    let mut pager = Pagination::new(&params, "name");
+    let (persons, total) =
+        get_persons_info(state, &kopid, client_auth_info.clone(), &pager).await?;
+    pager.total = total;
     let can_create = persons.iter().any(|(_, access)| access.delete);
+    let push_url = HxPushUrl(format!("/ui/admin/persons{}", pager.current_qs()));
     let persons_partial = PersonsPartialView {
         persons,
         can_create,
+        pager,
     };
     let uat: &UserAuthToken = client_auth_info
         .pre_validated_uat()
         .map_err(|op_err| HtmxError::new(&kopid, op_err, domain_info.clone()))?;
-    let push_url = HxPushUrl("/ui/admin/persons".to_string());
     Ok(if is_htmx {
         (push_url, persons_partial).into_response()
     } else {
@@ -858,8 +866,31 @@ async fn get_persons_info(
     state: ServerState,
     kopid: &KOpId,
     client_auth_info: ClientAuthInfo,
-) -> Result<Vec<(ScimPerson, ScimEffectiveAccess)>, WebError> {
-    let filter = ScimFilter::Equal(Attribute::Class.into(), EntryClass::Person.into());
+    pager: &Pagination,
+) -> Result<(Vec<(ScimPerson, ScimEffectiveAccess)>, u64), WebError> {
+    let class_filter = ScimFilter::Equal(Attribute::Class.into(), EntryClass::Person.into());
+    // Substring search across name + displayname when a query is present.
+    let filter = if pager.q.is_empty() {
+        class_filter
+    } else {
+        let qv = JsonValue::from(pager.q.clone());
+        let search = ScimFilter::Or(
+            Box::new(ScimFilter::Contains(Attribute::Name.into(), qv.clone())),
+            Box::new(ScimFilter::Contains(Attribute::DisplayName.into(), qv)),
+        );
+        ScimFilter::And(Box::new(class_filter), Box::new(search))
+    };
+
+    let sort_attr = match pager.sort.as_str() {
+        "displayname" => Attribute::DisplayName,
+        "spn" => Attribute::Spn,
+        _ => Attribute::Name,
+    };
+    let sort_order = if pager.order == "desc" {
+        ScimSortOrder::Descending
+    } else {
+        ScimSortOrder::Ascending
+    };
 
     let base: ScimListResponse = state
         .qe_r_ref
@@ -870,12 +901,16 @@ async fn get_persons_info(
             ScimEntryGetQuery {
                 attributes: Some(Vec::from(PERSON_ATTRIBUTES)),
                 ext_access_check: true,
-                sort_by: Some(Attribute::Name),
+                sort_by: Some(sort_attr),
+                sort_order: Some(sort_order),
+                start_index: NonZeroU64::new(pager.start_index()),
+                count: NonZeroU64::new(pager.per_page),
                 ..Default::default()
             },
         )
         .await?;
 
+    let total = base.total_results;
     let persons: Vec<_> = base
         .resources
         .into_iter()
@@ -883,7 +918,7 @@ async fn get_persons_info(
         .filter_map(scimentry_into_personinfo)
         .collect();
 
-    Ok(persons)
+    Ok((persons, total))
 }
 
 fn scimentry_into_personinfo(
