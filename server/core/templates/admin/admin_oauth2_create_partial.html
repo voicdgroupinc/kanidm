@@ -1,0 +1,55 @@
+(% extends "admin/admin_partial_base.html" %)
+
+(% block oauth2_item_extra_classes %)active(% endblock %)
+
+(% block admin_page %)
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="/ui/admin/oauth2" hx-target="#main">OAuth2 / OIDC clients</a></li>
+        <li class="breadcrumb-item active" aria-current="page">Create client</li>
+    </ol>
+</nav>
+
+(% if can_rw %)
+<form class="needs-validation col-12 col-md-8 col-lg-6"
+      hx-post="/ui/api/admin/oauth2"
+      hx-target=".toast-container" hx-swap="beforeend"
+      hx-validate="true" hx-ext="bs-validation" novalidate>
+    <div class="mb-3">
+        <label for="oauth2-name" class="form-label fw-bold">Client name</label>
+        <input type="text" class="form-control" id="oauth2-name" name="name" required
+               autocomplete="off" placeholder="my_app">
+        <div class="form-text">Unique short name (used as the client_id).</div>
+    </div>
+    <div class="mb-3">
+        <label for="oauth2-displayname" class="form-label fw-bold">Display name</label>
+        <input type="text" class="form-control" id="oauth2-displayname" name="displayname" required
+               autocomplete="off" placeholder="My App">
+    </div>
+    <div class="mb-3">
+        <label for="oauth2-landing" class="form-label fw-bold">Landing URL</label>
+        <input type="url" class="form-control" id="oauth2-landing" name="landing"
+               autocomplete="off" placeholder="https://app.example.com/">
+        <div class="form-text">Where users are sent from the app launcher.</div>
+    </div>
+    <div class="mb-3">
+        <label class="form-label fw-bold d-block">Client type</label>
+        <div class="form-check form-check-inline">
+            <input class="form-check-input" type="radio" name="rs_type" id="rs-basic" value="basic" checked>
+            <label class="form-check-label" for="rs-basic">Confidential (has a secret)</label>
+        </div>
+        <div class="form-check form-check-inline">
+            <input class="form-check-input" type="radio" name="rs_type" id="rs-public" value="public">
+            <label class="form-check-label" for="rs-public">Public (PKCE, no secret)</label>
+        </div>
+    </div>
+    <button type="submit" class="btn btn-primary">Create client</button>
+    <a href="/ui/admin/oauth2" hx-target="#main" class="btn btn-secondary">Cancel</a>
+</form>
+(% else %)
+<p>Your session must be unlocked before you can create a client.</p>
+<a href="/ui/unlock" class="btn btn-secondary">Unlock Edit 🔒</a>
+(% endif %)
+
+<div id="toast-container" class="toast-container position-fixed bottom-0 end-0 p-3"></div>
+(% endblock %)
