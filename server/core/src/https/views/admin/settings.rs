@@ -41,6 +41,11 @@ struct SettingsView {
 #[template(path = "admin/admin_settings_partial.html")]
 struct SettingsPartialView {
     can_rw: bool,
+    // Domain settings are governed by ACP idm_acp_domain_admin (group idm_domain_admins);
+    // system settings by idm_acp_system_config_* (group idm_account_policy_admins). A caller
+    // without access can't read those entries, so each section is shown only when readable.
+    domain_available: bool,
+    system_available: bool,
     domain_display_name: String,
     domain_ldap_basedn: String,
     domain_ssid: String,
@@ -75,7 +80,9 @@ pub(crate) async fn view_settings_get(
         .map_err(|op_err| HtmxError::new(&kopid, op_err, domain_info.clone()))?;
     let can_rw = uat_privileges_active(uat);
 
-    let domain_entry: ScimEntryKanidm = state
+    // Read each config entry independently; a caller lacking access to one section
+    // (e.g. not in idm_domain_admins) must still get a working page for the rest.
+    let domain_entry: Option<ScimEntryKanidm> = state
         .qe_r_ref
         .scim_entry_id_get(
             client_auth_info.clone(),
@@ -88,9 +95,9 @@ pub(crate) async fn view_settings_get(
             },
         )
         .await
-        .map_err(|op_err| HtmxError::new(&kopid, op_err, domain_info.clone()))?;
+        .ok();
 
-    let system_entry: ScimEntryKanidm = state
+    let system_entry: Option<ScimEntryKanidm> = state
         .qe_r_ref
         .scim_entry_id_get(
             client_auth_info.clone(),
@@ -103,15 +110,32 @@ pub(crate) async fn view_settings_get(
             },
         )
         .await
-        .map_err(|op_err| HtmxError::new(&kopid, op_err, domain_info.clone()))?;
+        .ok();
 
     let partial = SettingsPartialView {
         can_rw,
-        domain_display_name: attr_string(&domain_entry, &Attribute::DomainDisplayName),
-        domain_ldap_basedn: attr_string(&domain_entry, &Attribute::DomainLdapBasedn),
-        domain_ssid: attr_string(&domain_entry, &Attribute::DomainSsid),
-        badlist: attr_strings(&system_entry, &Attribute::BadlistPassword),
-        denied_names: attr_strings(&system_entry, &Attribute::DeniedName),
+        domain_available: domain_entry.is_some(),
+        system_available: system_entry.is_some(),
+        domain_display_name: domain_entry
+            .as_ref()
+            .map(|e| attr_string(e, &Attribute::DomainDisplayName))
+            .unwrap_or_default(),
+        domain_ldap_basedn: domain_entry
+            .as_ref()
+            .map(|e| attr_string(e, &Attribute::DomainLdapBasedn))
+            .unwrap_or_default(),
+        domain_ssid: domain_entry
+            .as_ref()
+            .map(|e| attr_string(e, &Attribute::DomainSsid))
+            .unwrap_or_default(),
+        badlist: system_entry
+            .as_ref()
+            .map(|e| attr_strings(e, &Attribute::BadlistPassword))
+            .unwrap_or_default(),
+        denied_names: system_entry
+            .as_ref()
+            .map(|e| attr_strings(e, &Attribute::DeniedName))
+            .unwrap_or_default(),
     };
 
     let push_url = HxPushUrl("/ui/admin/settings".to_string());
