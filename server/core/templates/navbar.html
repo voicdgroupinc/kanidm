@@ -3,11 +3,13 @@
         <a class="navbar-brand d-flex align-items-center" href="/ui/apps">
             (% if navbar_ctx.domain_info.image().is_some() %)
             <img src="/ui/images/domain"
-                alt="(( navbar_ctx.domain_info.display_name() ))" width="auto" height="40" class="navbar-toggler-img" />
+                alt="(( navbar_ctx.domain_info.display_name() ))" height="40"
+                style="height:40px; width:auto; max-width:220px; object-fit:contain;" />
             (% else %)
             <img
                 src="/pkg/img/logo.svg?v=((crate::https::cache_buster::get_cache_buster_key()))"
-                alt="(( navbar_ctx.domain_info.display_name() ))" width="auto" height="40" class="navbar-toggler-img" />
+                alt="(( navbar_ctx.domain_info.display_name() ))" height="40"
+                style="height:40px; width:auto; max-width:220px; object-fit:contain;" />
             (% endif %)
             <div class="ps-2">(( navbar_ctx.domain_info.display_name() ))</div>
         </a>
