@@ -36,6 +36,8 @@ let can_modify_any_attr = scim_effective_access.modify_present.check_any(
     </ol>
 </nav>
 
+(% include "admin/admin_unlock_banner.html" %)
+
 <form id="user_settings_container" class="needs-validation"
       hx-post="/ui/api/admin/group/(( group.uuid ))"
       hx-swap="beforeend"
