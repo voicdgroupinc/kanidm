@@ -48,6 +48,17 @@ struct ErrorToastPartial {
     operation_id: Uuid,
 }
 
+/// A toast that carries a human-readable message rather than a raw
+/// [OperationError]. Used where we can explain *why* something failed
+/// (e.g. an image that's too large or the wrong format).
+#[derive(Template, WebTemplate)]
+#[template(path = "admin/message_toast.html")]
+pub(crate) struct MessageToastPartial {
+    pub title: String,
+    pub message: String,
+    pub operation_id: Uuid,
+}
+
 pub fn view_router(state: ServerState) -> Router<ServerState> {
     // These routes are special, and often need to redirect *out* of kanidm. We need to
     // allow this within CSP.

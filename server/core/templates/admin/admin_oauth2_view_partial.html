@@ -84,8 +84,14 @@
             <div class="input-group">
                 <input type="file" class="form-control" id="oauth2-image-file" name="image"
                        accept="image/png,image/jpeg,image/gif,image/svg+xml,image/webp" required>
-                <button class="btn btn-primary" type="submit">Upload</button>
+                <button class="btn btn-primary" type="submit" id="oauth2-image-upload-btn">Upload</button>
             </div>
+            <div class="d-flex align-items-center gap-2 mt-2">
+                <img id="oauth2-image-preview" alt="Preview" class="d-none border rounded"
+                     style="max-height:64px; max-width:200px;">
+                <span id="oauth2-image-meta" class="text-body-secondary small"></span>
+            </div>
+            <div id="oauth2-image-warn" class="text-danger small mt-1 d-none"></div>
         </form>
         <form class="mb-1" hx-post="/ui/api/admin/oauth2/(( name ))/image_url"
               hx-target=".toast-container" hx-swap="beforeend">
