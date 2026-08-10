@@ -9,7 +9,7 @@
     </ol>
 </nav>
 
-(% include "admin/admin_unlock_banner.html" %)
+(% include "admin/admin_lock_state.html" %)
 
 (% if !domain_available %)
 <div class="alert alert-secondary col-12 col-md-10 col-lg-8">
@@ -22,26 +22,26 @@
         <h5 class="card-title">Domain</h5>
         <form hx-post="/ui/api/admin/settings/domain"
               hx-target=".toast-container" hx-swap="beforeend">
+            <fieldset (% if !lock.can_rw %)disabled(% endif %)>
             <div class="mb-3">
                 <label class="form-label fw-bold" for="display_name">Display name</label>
                 <input type="text" class="form-control" id="display_name" name="display_name"
-                       value="(( domain_display_name ))" (% if !can_rw %)disabled(% endif %)>
+                       value="(( domain_display_name ))">
             </div>
             <div class="mb-3">
                 <label class="form-label fw-bold" for="ldap_basedn">LDAP base DN
                     <span class="fw-normal text-body-secondary">(optional)</span></label>
                 <input type="text" class="form-control" id="ldap_basedn" name="ldap_basedn"
-                       value="(( domain_ldap_basedn ))" (% if !can_rw %)disabled(% endif %)>
+                       value="(( domain_ldap_basedn ))">
             </div>
             <div class="mb-3">
                 <label class="form-label fw-bold" for="ssid">Wireless SSID
                     <span class="fw-normal text-body-secondary">(optional)</span></label>
                 <input type="text" class="form-control" id="ssid" name="ssid"
-                       value="(( domain_ssid ))" (% if !can_rw %)disabled(% endif %)>
+                       value="(( domain_ssid ))">
             </div>
-            (% if can_rw %)
             <button type="submit" class="btn btn-primary">Save domain settings</button>
-            (% endif %)
+            </fieldset>
         </form>
     </div>
 </div>
@@ -59,25 +59,23 @@
             <span class="fw-normal text-body-secondary">(applies to all accounts)</span></h5>
         <form hx-post="/ui/api/admin/settings/account_policy"
               hx-target=".toast-container" hx-swap="beforeend">
+            <fieldset (% if !lock.can_rw %)disabled(% endif %)>
             <div class="mb-3">
                 <label class="form-label fw-bold" for="auth_session_expiry">Login session lifetime
                     <span class="fw-normal text-body-secondary">(seconds; blank = default)</span></label>
                 <input type="number" min="0" class="form-control" id="auth_session_expiry"
-                       name="auth_session_expiry" value="(( auth_session_expiry ))"
-                       (% if !can_rw %)disabled(% endif %)>
+                       name="auth_session_expiry" value="(( auth_session_expiry ))">
                 <div class="form-text">How long a login lasts before users must re-authenticate.</div>
             </div>
             <div class="mb-3">
                 <label class="form-label fw-bold" for="privilege_expiry">Privileged (edit) window
                     <span class="fw-normal text-body-secondary">(seconds; blank = default)</span></label>
                 <input type="number" min="0" class="form-control" id="privilege_expiry"
-                       name="privilege_expiry" value="(( privilege_expiry ))"
-                       (% if !can_rw %)disabled(% endif %)>
+                       name="privilege_expiry" value="(( privilege_expiry ))">
                 <div class="form-text">How long an unlocked/edit session stays privileged before re-locking.</div>
             </div>
-            (% if can_rw %)
             <button type="submit" class="btn btn-primary">Save expiry settings</button>
-            (% endif %)
+            </fieldset>
         </form>
     </div>
 </div>
@@ -95,7 +93,7 @@
         <summary class="card-title h5 mb-0" style="cursor:pointer;">Password badlist
             <span class="fw-normal text-body-secondary">((  badlist.len() )) entries — click to manage</span></summary>
         <p class="text-body-secondary mt-2">Passwords on this list are rejected for all accounts.</p>
-        (% if can_rw %)
+        <fieldset (% if !lock.can_rw %)disabled(% endif %)>
         <form class="mb-2" hx-post="/ui/api/admin/settings/badlist/add"
               hx-target=".toast-container" hx-swap="beforeend">
             <div class="input-group">
@@ -104,7 +102,6 @@
                 <button class="btn btn-primary" type="submit">Add</button>
             </div>
         </form>
-        (% endif %)
         (% if badlist.len() == 0 %)
         <p class="mb-0 text-body-secondary">The badlist is empty.</p>
         (% else %)
@@ -112,17 +109,16 @@
             (% for value in badlist %)
             <li class="list-group-item d-flex flex-row justify-content-between align-items-center">
                 <code class="text-break me-2">(( value ))</code>
-                (% if can_rw %)
                 <form hx-post="/ui/api/admin/settings/badlist/remove"
                       hx-target=".toast-container" hx-swap="beforeend">
                     <input type="hidden" name="value" value="(( value ))">
                     <button type="submit" class="btn btn-secondary btn-sm kanidm-remove-list-entry">Remove</button>
                 </form>
-                (% endif %)
             </li>
             (% endfor %)
         </ol>
         (% endif %)
+        </fieldset>
         </details>
     </div>
 </div>
@@ -131,7 +127,7 @@
     <div class="card-body">
         <h5 class="card-title">Denied names</h5>
         <p class="text-body-secondary">Usernames on this list cannot be created or used.</p>
-        (% if can_rw %)
+        <fieldset (% if !lock.can_rw %)disabled(% endif %)>
         <form class="mb-2" hx-post="/ui/api/admin/settings/denied_name/add"
               hx-target=".toast-container" hx-swap="beforeend">
             <div class="input-group">
@@ -140,7 +136,6 @@
                 <button class="btn btn-primary" type="submit">Add</button>
             </div>
         </form>
-        (% endif %)
         (% if denied_names.len() == 0 %)
         <p class="mb-0 text-body-secondary">No denied names.</p>
         (% else %)
@@ -148,17 +143,16 @@
             (% for value in denied_names %)
             <li class="list-group-item d-flex flex-row justify-content-between align-items-center">
                 <code class="text-break me-2">(( value ))</code>
-                (% if can_rw %)
                 <form hx-post="/ui/api/admin/settings/denied_name/remove"
                       hx-target=".toast-container" hx-swap="beforeend">
                     <input type="hidden" name="value" value="(( value ))">
                     <button type="submit" class="btn btn-secondary btn-sm kanidm-remove-list-entry">Remove</button>
                 </form>
-                (% endif %)
             </li>
             (% endfor %)
         </ol>
         (% endif %)
+        </fieldset>
     </div>
 </div>
 (% endif %)

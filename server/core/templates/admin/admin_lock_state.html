@@ -1,0 +1,23 @@
+/* Shared lock-state banner. Included by EVERY admin page, list pages included.
+
+   Previously only the three detail pages carried a banner, so on a list page a
+   missing "Create person" button had no explanation anywhere on screen. It also
+   assumed the session could always be elevated, and offered "Unlock to edit" to
+   read-only sessions where that is a dead end. */
+(% if !lock.can_rw %)
+(% if lock.can_unlock %)
+<div class="alert alert-warning d-flex flex-wrap justify-content-between align-items-center gap-2 col-12 col-md-10 col-lg-8">
+    <span>🔒 <span class="fw-bold">Read-only.</span>
+        Editing controls below are shown but disabled. Unlock a privileged
+        session to use them — you'll come straight back to this page.</span>
+    <a href="/ui/unlock" hx-boost="false"
+       class="btn btn-warning btn-sm text-nowrap">🔓 Unlock to edit</a>
+</div>
+(% else %)
+<div class="alert alert-secondary col-12 col-md-10 col-lg-8">
+    🔒 <span class="fw-bold">This session is read-only</span> and cannot be
+    elevated, so the editing controls below are disabled. Sign in again if you
+    need to make changes.
+</div>
+(% endif %)
+(% endif %)

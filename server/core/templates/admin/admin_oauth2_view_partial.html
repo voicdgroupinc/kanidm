@@ -10,7 +10,7 @@
     </ol>
 </nav>
 
-(% include "admin/admin_unlock_banner.html" %)
+(% include "admin/admin_lock_state.html" %)
 
 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
     <h3 class="mb-0">
@@ -24,6 +24,7 @@
 <div class="card mb-3 col-12 col-md-10 col-lg-8">
     <div class="card-body">
         <h5 class="card-title">Client</h5>
+        <fieldset (% if !lock.can_rw %)disabled(% endif %)>
         <div class="row mt-2"><label class="col-12 col-md-3 fw-bold">Client ID</label>
             <div class="col-12 col-md-9"><code>(( name ))</code></div></div>
         (% if !is_public %)
@@ -43,11 +44,9 @@
             <div class="col-12 col-md-9">
                 <label class="form-label fw-bold" for="landing">Landing URL</label>
                 <input type="url" class="form-control" id="landing" name="landing" value="(( landing ))"
-                       (% if !can_rw %)disabled(% endif %)>
+                       >
             </div>
-            (% if can_rw %)
             <div class="col-12 col-md-3"><button class="btn btn-primary w-100" type="submit">Save</button></div>
-            (% endif %)
         </form>
 
         <form class="row mt-3 g-2 align-items-end"
@@ -58,12 +57,11 @@
                     <span class="fw-normal text-body-secondary">(seconds; blank = server default)</span></label>
                 <input type="number" min="0" class="form-control" id="refresh_ttl" name="seconds"
                        value="(( refresh_token_expiry.as_deref().unwrap_or_default() ))"
-                       (% if !can_rw %)disabled(% endif %)>
+                       >
             </div>
-            (% if can_rw %)
             <div class="col-12 col-md-3"><button class="btn btn-primary w-100" type="submit">Save</button></div>
-            (% endif %)
         </form>
+        </fieldset>
     </div>
 </div>
 
@@ -76,7 +74,7 @@
         (% else %)
         <p class="text-body-secondary">No icon set.</p>
         (% endif %)
-        (% if can_rw %)
+        <fieldset (% if !lock.can_rw %)disabled(% endif %)>
         <form class="mb-2" hx-post="/ui/api/admin/oauth2/(( name ))/image"
               hx-encoding="multipart/form-data"
               hx-target=".toast-container" hx-swap="beforeend">
@@ -110,14 +108,14 @@
             <button type="submit" class="btn btn-outline-secondary btn-sm">Remove icon</button>
         </form>
         (% endif %)
-        (% endif %)
+        </fieldset>
     </div>
 </div>
 
 <div class="card mb-3 col-12 col-md-10 col-lg-8">
     <div class="card-body">
         <h5 class="card-title">Redirect URLs</h5>
-        (% if can_rw %)
+        <fieldset (% if !lock.can_rw %)disabled(% endif %)>
         <form class="mb-2" hx-post="/ui/api/admin/oauth2/(( name ))/add_origin"
               hx-target=".toast-container" hx-swap="beforeend">
             <div class="input-group">
@@ -126,7 +124,6 @@
                 <button class="btn btn-primary" type="submit">Add</button>
             </div>
         </form>
-        (% endif %)
         (% if origins.len() == 0 %)
         <p class="mb-0 text-body-secondary">No redirect URLs.</p>
         (% else %)
@@ -134,18 +131,17 @@
             (% for origin in origins %)
             <li class="list-group-item d-flex flex-row justify-content-between align-items-center">
                 <code class="text-break me-2">(( origin ))</code>
-                (% if can_rw %)
                 <form hx-post="/ui/api/admin/oauth2/(( name ))/remove_origin"
                       hx-confirm="Remove redirect URL (( origin ))?"
                       hx-target=".toast-container" hx-swap="beforeend">
                     <input type="hidden" name="origin" value="(( origin ))">
                     <button type="submit" class="btn btn-secondary btn-sm kanidm-remove-list-entry">Remove</button>
                 </form>
-                (% endif %)
             </li>
             (% endfor %)
         </ol>
         (% endif %)
+        </fieldset>
     </div>
 </div>
 
@@ -153,7 +149,7 @@
     <div class="card-body">
         <h5 class="card-title">Scope maps</h5>
         <p class="text-body-secondary">Which OAuth2 scopes members of a group receive.</p>
-        (% if can_rw %)
+        <fieldset (% if !lock.can_rw %)disabled(% endif %)>
         <form class="row g-2 mb-2" hx-post="/ui/api/admin/oauth2/(( name ))/add_scopemap"
               hx-target=".toast-container" hx-swap="beforeend">
             <div class="col-12 col-md-5">
@@ -172,7 +168,6 @@
                 <button class="btn btn-primary w-100" type="submit">Set</button>
             </div>
         </form>
-        (% endif %)
         (% if scope_maps.len() == 0 %)
         <p class="mb-0 text-body-secondary">No scope maps.</p>
         (% else %)
@@ -181,33 +176,32 @@
             <li class="list-group-item d-flex flex-row justify-content-between align-items-center">
                 <div><span class="fw-bold">(( sm.group ))</span>
                     <span class="text-body-secondary">→ (( sm.scopes|join(", ") ))</span></div>
-                (% if can_rw %)
                 <form hx-post="/ui/api/admin/oauth2/(( name ))/remove_scopemap"
                       hx-confirm="Remove scope map for (( sm.group ))?"
                       hx-target=".toast-container" hx-swap="beforeend">
                     <input type="hidden" name="group" value="(( sm.group ))">
                     <button type="submit" class="btn btn-secondary btn-sm kanidm-remove-list-entry">Remove</button>
                 </form>
-                (% endif %)
             </li>
             (% endfor %)
         </ol>
         (% endif %)
+        </fieldset>
     </div>
 </div>
 
-(% if can_rw %)
 <div class="card border-danger mb-3 col-12 col-md-10 col-lg-8">
     <div class="card-body">
         <h5 class="card-title text-danger">Danger zone</h5>
+        <fieldset (% if !lock.can_rw %)disabled(% endif %)>
         <form hx-post="/ui/api/admin/oauth2/(( name ))/delete"
               hx-confirm="Delete OAuth2 client (( name ))? This cannot be undone."
               hx-target=".toast-container" hx-swap="beforeend">
             <button type="submit" class="btn btn-danger">Delete client</button>
         </form>
+        </fieldset>
     </div>
 </div>
-(% endif %)
 
 <div id="toast-container" class="toast-container position-fixed bottom-0 end-0 p-3"></div>
 (% endblock %)

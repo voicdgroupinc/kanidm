@@ -218,9 +218,14 @@ pub async fn view_reauth_to_referer_get(
     let referer = headers.get("Referer").and_then(|hv| hv.to_str().ok());
 
     let redirect = referer.and_then(|some_referer| Uri::from_str(some_referer).ok());
+    // path_and_query, not path: the admin list pages carry their search, sort and
+    // page in the query string, so returning only the path silently dropped the
+    // user's filters. The banner promises "you'll come straight back to this
+    // page", and that has to include what they had typed. Still path-relative, so
+    // this cannot be turned into an open redirect to another host.
     let redirect = redirect
         .as_ref()
-        .map(|uri| uri.path())
+        .and_then(|uri| uri.path_and_query().map(|pq| pq.as_str()))
         .unwrap_or(Urls::Apps.as_ref());
 
     let display_ctx = LoginDisplayCtx {

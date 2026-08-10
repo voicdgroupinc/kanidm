@@ -1,5 +1,7 @@
 use crate::https::middleware::KOpId;
+use crate::https::views::reauth::{uat_privileges_active, uat_privileges_possible};
 use crate::https::ServerState;
+use kanidm_proto::internal::{UatPurpose, UserAuthToken};
 use axum::routing::{get, post};
 use axum::Router;
 use axum_htmx::HxRequestGuardLayer;
@@ -17,6 +19,64 @@ pub(crate) mod groups;
 pub(crate) mod oauth2;
 pub(crate) mod persons;
 pub(crate) mod settings;
+
+/// Shared "edit mode" state for every admin page.
+///
+/// Kanidm gates writes on a *privileged* (re-authenticated) session which expires
+/// on `privilege_expiry` (default 600s). Every admin page needs the same three
+/// facts about it, but each used to derive and render them differently — some
+/// showed a banner, some an inline button, some disabled the inputs, and some
+/// silently removed the controls. Silent removal is the worst of those: it makes
+/// "your session is locked" indistinguishable from "you lack the permission".
+///
+/// Rendering rule that goes with this struct: **never hide a control merely
+/// because the session is locked** — render it disabled. Hiding is reserved for
+/// "the caller lacks the ACP permission", which is what restores that signal.
+pub(crate) struct LockState {
+    /// Privileges are active right now, so writes are permitted.
+    pub can_rw: bool,
+    /// Re-authenticating *could* elevate this session. False for a read-only
+    /// session, where offering "Unlock to edit" is a dead end — previously the
+    /// admin pages offered it unconditionally.
+    pub can_unlock: bool,
+    /// Human-readable time left in the privileged window, e.g. "9m 12s".
+    /// `None` when locked.
+    pub expires_in: Option<String>,
+}
+
+impl LockState {
+    pub(crate) fn new(uat: &UserAuthToken) -> Self {
+        let can_rw = uat_privileges_active(uat);
+
+        let expires_in = if can_rw {
+            match uat.purpose {
+                UatPurpose::ReadWrite { expiry: Some(exp) } => {
+                    #[allow(clippy::disallowed_methods)]
+                    // Only used to render a "fuzzy" countdown, matching the
+                    // existing precedent in views::reauth.
+                    let now = time::OffsetDateTime::now_utc();
+                    (exp > now).then(|| {
+                        let secs = (exp - now).whole_seconds();
+                        if secs >= 60 {
+                            format!("{}m {}s", secs / 60, secs % 60)
+                        } else {
+                            format!("{secs}s")
+                        }
+                    })
+                }
+                _ => None,
+            }
+        } else {
+            None
+        };
+
+        LockState {
+            can_rw,
+            can_unlock: uat_privileges_possible(uat),
+            expires_in,
+        }
+    }
+}
 
 /// List (uuid, name) for all entries of `class` the caller can see, sorted by name,
 /// for populating admin-UI dropdowns (groups, persons). Best-effort: returns empty on error.

@@ -3,7 +3,7 @@ use crate::https::extractors::{DomainInfo, VerifiedClientInformation};
 use crate::https::middleware::KOpId;
 use crate::https::views::errors::HtmxError;
 use crate::https::views::navbar::NavbarCtx;
-use crate::https::views::reauth::uat_privileges_active;
+use crate::https::views::admin::LockState;
 use crate::https::views::{ErrorToastPartial, Urls};
 use crate::https::ServerState;
 use askama::Template;
@@ -63,7 +63,11 @@ struct PersonsPartialView {
     // True when the viewer may delete persons (i.e. is a people-admin), which in
     // Kanidm's default ACPs is granted together with create. Used to hide the
     // "Create person" button from non-admins; the create itself is ACP-enforced.
+    // NOTE: this is deliberately an ACP check only, NOT gated on the privilege
+    // lock — a locked admin still sees the button (disabled), which is what makes
+    // the capability discoverable.
     can_create: bool,
+    lock: LockState,
     pager: Pagination,
 }
 
@@ -79,7 +83,7 @@ struct PersonView {
 struct PersonViewPartial {
     person: ScimPerson,
     scim_effective_access: ScimEffectiveAccess,
-    can_rw: bool,
+    lock: LockState,
     // Derived account status for the status card.
     account_status: &'static str,
     account_status_class: &'static str,
@@ -104,7 +108,7 @@ struct PersonCreateView {
 #[derive(Template, WebTemplate)]
 #[template(path = "admin/admin_person_create_partial.html")]
 struct PersonCreatePartial {
-    can_rw: bool,
+    lock: LockState,
 }
 
 #[derive(Template, WebTemplate)]
@@ -130,7 +134,7 @@ pub(crate) async fn view_person_view_get(
     let uat: &UserAuthToken = client_auth_info
         .pre_validated_uat()
         .map_err(|op_err| HtmxError::new(&kopid, op_err, domain_info.clone()))?;
-    let can_rw = uat_privileges_active(uat);
+    let lock = LockState::new(uat);
 
     // Derive a human-facing account status from the validity window.
     let now = OffsetDateTime::now_utc();
@@ -142,10 +146,10 @@ pub(crate) async fn view_person_view_get(
         };
     let expire_input = person.account_expire.map(dt_to_input);
     let valid_from_input = person.account_valid_from.map(dt_to_input);
-    let can_edit_validity =
-        can_rw && scim_effective_access.modify_present.check(&Attribute::AccountExpire);
-    let can_edit_ssh =
-        can_rw && scim_effective_access.modify_present.check(&Attribute::SshPublicKey);
+    // ACP only — the privilege lock is applied by the template's <fieldset>, so
+    // these sections stay laid out (disabled) instead of vanishing when locked.
+    let can_edit_validity = scim_effective_access.modify_present.check(&Attribute::AccountExpire);
+    let can_edit_ssh = scim_effective_access.modify_present.check(&Attribute::SshPublicKey);
 
     // Build the add-to-group dropdown: all groups minus the ones already joined.
     let member_uuids: std::collections::BTreeSet<Uuid> =
@@ -169,7 +173,7 @@ pub(crate) async fn view_person_view_get(
     let person_partial = PersonViewPartial {
         person,
         scim_effective_access,
-        can_rw,
+        lock,
         account_status,
         account_status_class,
         expire_input,
@@ -208,14 +212,15 @@ pub(crate) async fn view_persons_get(
     pager.total = total;
     let can_create = persons.iter().any(|(_, access)| access.delete);
     let push_url = HxPushUrl(format!("/ui/admin/persons{}", pager.current_qs()));
-    let persons_partial = PersonsPartialView {
-        persons,
-        can_create,
-        pager,
-    };
     let uat: &UserAuthToken = client_auth_info
         .pre_validated_uat()
         .map_err(|op_err| HtmxError::new(&kopid, op_err, domain_info.clone()))?;
+    let persons_partial = PersonsPartialView {
+        persons,
+        can_create,
+        lock: LockState::new(uat),
+        pager,
+    };
     Ok(if is_htmx {
         (push_url, persons_partial).into_response()
     } else {
@@ -239,8 +244,9 @@ pub(crate) async fn view_person_create_get(
     let uat: &UserAuthToken = client_auth_info
         .pre_validated_uat()
         .map_err(|op_err| HtmxError::new(&kopid, op_err, domain_info.clone()))?;
-    let can_rw = uat_privileges_active(uat);
-    let partial = PersonCreatePartial { can_rw };
+    let partial = PersonCreatePartial {
+        lock: LockState::new(uat),
+    };
     let push_url = HxPushUrl("/ui/admin/persons/create".to_string());
     Ok(if is_htmx {
         (push_url, partial).into_response()

@@ -9,8 +9,19 @@
     </ol>
 </nav>
 
-(% if can_rw %)
+(% include "admin/admin_lock_state.html" %)
+
+/* Gated on the ACP right only, matching the person and group lists. It used to
+   be gated on the privilege lock, so the button disappeared whenever the session
+   locked. Rendered as a disabled-looking link when locked, since <fieldset> does
+   not disable anchors. */
+(% if can_create %)
+(% if lock.can_rw %)
 <a href="/ui/admin/oauth2/create" hx-target="#main" class="btn btn-primary mb-3">＋ Create client</a>
+(% else %)
+<a class="btn btn-primary mb-3 disabled" aria-disabled="true"
+   title="Unlock your session to create a client">＋ Create client</a>
+(% endif %)
 (% endif %)
 
 <table class="table table-striped">

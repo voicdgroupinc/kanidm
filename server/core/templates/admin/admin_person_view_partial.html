@@ -10,7 +10,7 @@
     </ol>
 </nav>
 
-(% include "admin/admin_unlock_banner.html" %)
+(% include "admin/admin_lock_state.html" %)
 
 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
     <h3 class="mb-0">
@@ -35,6 +35,7 @@
         </h5>
 
         (% if can_edit_validity %)
+        <fieldset (% if !lock.can_rw %)disabled(% endif %)>
         <div class="row g-3 align-items-end mt-1">
             <div class="col-12 col-md-6">
                 <form hx-post="/ui/api/admin/person/(( person.uuid ))/set_valid_from"
@@ -87,34 +88,40 @@
                 <button class="btn btn-secondary" type="submit">Clear login lockout</button>
             </form>
         </div>
-        (% else %)
-        <p class="mb-0 text-body-secondary">Unlock your session to manage account validity.</p>
+        </fieldset>
         (% endif %)
     </div>
 </div>
 
-(% if can_rw %)
+/* The Credentials card used to vanish entirely while locked, so the only way to
+   discover that admins can issue a reset link was to already know. It now stays
+   put and disables. */
 <div class="card mb-3 col-12 col-md-10 col-lg-8">
     <div class="card-body">
         <h5 class="card-title">Credentials</h5>
         <p class="text-body-secondary">Generate a self-service reset link the user opens to set
             their own password or passkey.</p>
+        <fieldset (% if !lock.can_rw %)disabled(% endif %)>
         <form hx-post="/ui/api/admin/person/(( person.uuid ))/reset_link"
               hx-target="#reset-link-target"
               hx-swap="innerHTML"
               hx-disabled-elt="find button">
             <button class="btn btn-primary" type="submit">Generate password-reset link</button>
         </form>
+        </fieldset>
         <div id="reset-link-target"></div>
     </div>
 </div>
-(% endif %)
 
 (% if scim_effective_access.search.check(&Attribute::Mail) %)
-(% let can_edit_mail = can_rw && scim_effective_access.modify_present.check(&Attribute::Mail) %)
+/* can_edit_* is now purely the ACP check. The lock is applied by the <fieldset>,
+   so a locked session keeps the same layout with the controls greyed out rather
+   than having the Add form and every Remove button disappear. */
+(% let can_edit_mail = scim_effective_access.modify_present.check(&Attribute::Mail) %)
 <div class="card mb-3 col-12 col-md-10 col-lg-8">
     <div class="card-body">
         <h5 class="card-title">Emails</h5>
+        <fieldset (% if !lock.can_rw %)disabled(% endif %)>
         (% if can_edit_mail %)
         <form class="mb-2"
               hx-post="/ui/api/admin/person/(( person.uuid ))/add_mail"
@@ -151,6 +158,7 @@
             (% endfor %)
         </ol>
         (% endif %)
+        </fieldset>
     </div>
 </div>
 (% endif %)
@@ -159,7 +167,7 @@
 <div class="card mb-3 col-12 col-md-10 col-lg-8">
     <div class="card-body">
         <h5 class="card-title">Groups</h5>
-        (% if can_rw %)
+        <fieldset (% if !lock.can_rw %)disabled(% endif %)>
         (% if addable_groups.len() == 0 %)
         <p class="mb-2 text-body-secondary">Already a member of every group.</p>
         (% else %)
@@ -193,7 +201,6 @@
             </div>
         </form>
         (% endif %)
-        (% endif %)
         (% if person.groups.len() == 0 %)
         <p class="mb-0 text-body-secondary">Not a direct member of any group.</p>
         (% else %)
@@ -201,7 +208,6 @@
             (% for group in person.groups %)
             <li class="list-group-item d-flex flex-row justify-content-between align-items-center">
                 <div><a href="/ui/admin/group/(( group.uuid ))/view" hx-target="#main">(( group.value ))</a></div>
-                (% if can_rw %)
                 <form hx-post="/ui/api/admin/person/(( person.uuid ))/remove_group"
                       hx-confirm="Remove (( person.spn )) from (( group.value ))?"
                       hx-target=".toast-container"
@@ -209,11 +215,11 @@
                     <input type="hidden" name="group" value="(( group.uuid ))">
                     <button type="submit" class="btn btn-secondary btn-sm kanidm-remove-list-entry">Remove</button>
                 </form>
-                (% endif %)
             </li>
             (% endfor %)
         </ol>
         (% endif %)
+        </fieldset>
     </div>
 </div>
 (% endif %)
@@ -222,6 +228,7 @@
 <div class="card mb-3 col-12 col-md-10 col-lg-8">
     <div class="card-body">
         <h5 class="card-title">SSH public keys</h5>
+        <fieldset (% if !lock.can_rw %)disabled(% endif %)>
         (% if can_edit_ssh %)
         <form class="mb-2"
               hx-post="/ui/api/admin/person/(( person.uuid ))/add_ssh_key"
@@ -263,20 +270,26 @@
             (% endfor %)
         </ol>
         (% endif %)
+        </fieldset>
     </div>
 </div>
 (% endif %)
 
-(% if can_rw && scim_effective_access.delete %)
+/* Danger zone stays visible while locked so the page's capabilities are
+   discoverable, but the delete button itself is disabled. Visibility is still
+   gated on the ACP delete right. */
+(% if scim_effective_access.delete %)
 <div class="card border-danger mb-3 col-12 col-md-10 col-lg-8">
     <div class="card-body">
         <h5 class="card-title text-danger">Danger zone</h5>
+        <fieldset (% if !lock.can_rw %)disabled(% endif %)>
         <form hx-post="/ui/api/admin/person/(( person.uuid ))/delete"
               hx-confirm="Delete person (( person.spn ))? This cannot be undone."
               hx-target=".toast-container"
               hx-swap="beforeend">
             <button type="submit" class="btn btn-danger">Delete person</button>
         </form>
+        </fieldset>
     </div>
 </div>
 (% endif %)

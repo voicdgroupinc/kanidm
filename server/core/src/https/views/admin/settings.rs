@@ -2,7 +2,7 @@ use crate::https::extractors::{DomainInfo, VerifiedClientInformation};
 use crate::https::middleware::KOpId;
 use crate::https::views::errors::HtmxError;
 use crate::https::views::navbar::NavbarCtx;
-use crate::https::views::reauth::uat_privileges_active;
+use crate::https::views::admin::LockState;
 use crate::https::views::{ErrorToastPartial, Urls};
 use crate::https::ServerState;
 use askama::Template;
@@ -53,7 +53,7 @@ struct SettingsView {
 #[derive(Template, WebTemplate)]
 #[template(path = "admin/admin_settings_partial.html")]
 struct SettingsPartialView {
-    can_rw: bool,
+    lock: LockState,
     // Domain settings are governed by ACP idm_acp_domain_admin (group idm_domain_admins);
     // system settings by idm_acp_system_config_* (group idm_account_policy_admins). A caller
     // without access can't read those entries, so each section is shown only when readable.
@@ -95,7 +95,7 @@ pub(crate) async fn view_settings_get(
     let uat: &UserAuthToken = client_auth_info
         .pre_validated_uat()
         .map_err(|op_err| HtmxError::new(&kopid, op_err, domain_info.clone()))?;
-    let can_rw = uat_privileges_active(uat);
+
 
     // Read each config entry independently; a caller lacking access to one section
     // (e.g. not in idm_domain_admins) must still get a working page for the rest.
@@ -145,7 +145,7 @@ pub(crate) async fn view_settings_get(
         .ok();
 
     let partial = SettingsPartialView {
-        can_rw,
+        lock: LockState::new(uat),
         domain_available: domain_entry.is_some(),
         system_available: system_entry.is_some(),
         policy_available: policy_entry.is_some(),
