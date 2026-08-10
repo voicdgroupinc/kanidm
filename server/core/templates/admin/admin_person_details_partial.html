@@ -3,7 +3,11 @@
 <div class="row mt-3">
     <label for="person(( name ))" class="col-12 col-md-3 col-lg-2 col-form-label fw-bold py-0 py-md-2">(( dispname ))</label>
     <div class="col-12 col-md-8 col-lg-6">
-        (% if can_rw && scim_effective_access.modify_present.check(&attribute) -%)
+        /* Editability is decided by the ACP alone. The lock no longer changes the
+           control's shape — the enclosing <fieldset> disables it — so the field
+           does not silently turn into plain text when the privilege window
+           lapses, which used to look like the attribute had become unwritable. */
+        (% if scim_effective_access.modify_present.check(&attribute) -%)
         <input class="form-control py-0" id="person(( name ))" name="(( name ))" value="(( value ))"/>
         (% else -%)
         <input readonly class="form-control-plaintext py-0" id="person(( name ))" name="(( name ))" value="(( value ))">
@@ -25,15 +29,14 @@ let can_modify_any_attr = scim_effective_access.modify_present.check_any(
       hx-validate="true"
       hx-ext="bs-validation"
       novalidate>
+    /* The old locked state swapped Save for an "Unlock Edit" button wrapped as
+       <a><button>, which is invalid HTML (interactive content inside an anchor)
+       and broke keyboard/AT semantics. Unlocking is now offered once, by the
+       shared banner at the top of the page, so every section can simply disable. */
+    <fieldset (% if !lock.can_rw %)disabled(% endif %)>
 
     (% if can_modify_any_attr -%)
-        (% if can_rw -%)
-            <button type="submit" class="btn btn-primary">Save</button>
-        (% else -%)
-            <a href="/ui/unlock">
-                <button type="button" class="btn btn-secondary">Unlock Edit 🔒</button>
-            </a>
-        (% endif -%)
+        <button type="submit" class="btn btn-primary">Save</button>
     (% endif -%)
 
     (% call string_attr("UUID", "uuid", person.uuid, Attribute::Uuid) -%)(% endcall %)
@@ -50,4 +53,5 @@ let can_modify_any_attr = scim_effective_access.modify_present.check_any(
     (% if let Some(entry_managed_by) = person.managed_by.clone() %)
         (% call string_attr("Managed By", "managed_by", entry_managed_by.value, Attribute::EntryManagedBy) -%)(% endcall %)
     (% endif %)
+    </fieldset>
 </form>

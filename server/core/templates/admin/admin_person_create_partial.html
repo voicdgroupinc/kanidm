@@ -10,7 +10,13 @@
     </ol>
 </nav>
 
-(% if can_rw %)
+(% include "admin/admin_lock_state.html" %)
+
+/* The form is always rendered, disabled when locked, rather than replaced by an
+   interstitial. The old "your session must be unlocked" page was a dead end: you
+   arrived from a Create button, lost the form, and had no idea what it asked for.
+   <fieldset disabled> disables every control inside it natively, and Bootstrap's
+   reboot strips fieldset's own border/margin/padding so it is visually inert. */
 <form id="create_person_container" class="needs-validation col-12 col-md-8 col-lg-6"
       hx-post="/ui/api/admin/persons"
       hx-target=".toast-container"
@@ -18,6 +24,7 @@
       hx-validate="true"
       hx-ext="bs-validation"
       novalidate>
+    <fieldset (% if !lock.can_rw %)disabled(% endif %)>
     <div class="mb-3">
         <label for="create-person-name" class="form-label fw-bold">Username</label>
         <input type="text" class="form-control" id="create-person-name" name="name" required
@@ -36,12 +43,11 @@
         <div class="form-text">Required — used to match the user for app SSO (e.g. OpsPortal).</div>
     </div>
     <button type="submit" class="btn btn-primary">Create person</button>
+    </fieldset>
+    /* Cancel sits OUTSIDE the fieldset: it is a navigation link, not a write, so
+       it must stay usable while the session is locked. */
     <a href="/ui/admin/persons" hx-target="#main" class="btn btn-secondary">Cancel</a>
 </form>
-(% else %)
-<p>Your session must be unlocked before you can create a person.</p>
-<a href="/ui/unlock" class="btn btn-secondary">Unlock Edit 🔒</a>
-(% endif %)
 
 <div id="toast-container" class="toast-container position-fixed bottom-0 end-0 p-3"></div>
 (% endblock %)

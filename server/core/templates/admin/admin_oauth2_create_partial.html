@@ -10,11 +10,13 @@
     </ol>
 </nav>
 
-(% if can_rw %)
+(% include "admin/admin_lock_state.html" %)
+
 <form class="needs-validation col-12 col-md-8 col-lg-6"
       hx-post="/ui/api/admin/oauth2"
       hx-target=".toast-container" hx-swap="beforeend"
       hx-validate="true" hx-ext="bs-validation" novalidate>
+    <fieldset (% if !lock.can_rw %)disabled(% endif %)>
     <div class="mb-3">
         <label for="oauth2-name" class="form-label fw-bold">Client name</label>
         <input type="text" class="form-control" id="oauth2-name" name="name" required
@@ -44,12 +46,9 @@
         </div>
     </div>
     <button type="submit" class="btn btn-primary">Create client</button>
+    </fieldset>
     <a href="/ui/admin/oauth2" hx-target="#main" class="btn btn-secondary">Cancel</a>
 </form>
-(% else %)
-<p>Your session must be unlocked before you can create a client.</p>
-<a href="/ui/unlock" class="btn btn-secondary">Unlock Edit 🔒</a>
-(% endif %)
 
 <div id="toast-container" class="toast-container position-fixed bottom-0 end-0 p-3"></div>
 (% endblock %)

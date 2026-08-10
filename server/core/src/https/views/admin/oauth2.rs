@@ -3,7 +3,7 @@ use crate::https::middleware::KOpId;
 use crate::https::oauth2::oauth2_id;
 use crate::https::views::errors::HtmxError;
 use crate::https::views::navbar::NavbarCtx;
-use crate::https::views::reauth::uat_privileges_active;
+use crate::https::views::admin::LockState;
 use crate::https::views::{ErrorToastPartial, MessageToastPartial, Urls};
 use crate::https::ServerState;
 use askama::Template;
@@ -86,7 +86,10 @@ struct Oauth2ListView {
 #[template(path = "admin/admin_oauth2_partial.html")]
 struct Oauth2ListPartial {
     clients: Vec<Oauth2Row>,
-    can_rw: bool,
+    // ACP-derived, like the person/group lists: the Create button stays visible
+    // (disabled) while locked instead of vanishing.
+    can_create: bool,
+    lock: LockState,
 }
 
 #[derive(Template, WebTemplate)]
@@ -107,7 +110,7 @@ struct Oauth2DetailPartial {
     scope_maps: Vec<ScimOAuth2ScopeMap>,
     basic_secret: Option<String>,
     is_public: bool,
-    can_rw: bool,
+    lock: LockState,
     // Manageable group names, for the scope-map group dropdown.
     groups: Vec<String>,
     // Whether this client currently has an icon/logo set.
@@ -126,7 +129,7 @@ struct Oauth2CreateView {
 #[derive(Template, WebTemplate)]
 #[template(path = "admin/admin_oauth2_create_partial.html")]
 struct Oauth2CreatePartial {
-    can_rw: bool,
+    lock: LockState,
 }
 
 pub(crate) async fn view_oauth2_get(
@@ -139,8 +142,6 @@ pub(crate) async fn view_oauth2_get(
     let uat: &UserAuthToken = client_auth_info
         .pre_validated_uat()
         .map_err(|op_err| HtmxError::new(&kopid, op_err, domain_info.clone()))?;
-    let can_rw = uat_privileges_active(uat);
-
     let filter = ScimFilter::Equal(
         Attribute::Class.into(),
         EntryClass::OAuth2ResourceServer.into(),
@@ -154,11 +155,22 @@ pub(crate) async fn view_oauth2_get(
             ScimEntryGetQuery {
                 attributes: Some(vec![Attribute::Name, Attribute::DisplayName]),
                 sort_by: Some(Attribute::Name),
+                // Ask for effective access so can_create is an ACP fact. This list
+                // used to gate its Create button on the privilege lock, so the
+                // button vanished whenever the session locked and the feature was
+                // undiscoverable — the opposite inconsistency to the person/group
+                // lists, which showed it and then dead-ended.
+                ext_access_check: true,
                 ..Default::default()
             },
         )
         .await
         .map_err(|op_err| HtmxError::new(&kopid, op_err, domain_info.clone()))?;
+
+    let can_create = base
+        .resources
+        .iter()
+        .any(|e| e.ext_access_check.as_ref().is_some_and(|a| a.delete));
 
     let clients: Vec<Oauth2Row> = base
         .resources
@@ -169,7 +181,11 @@ pub(crate) async fn view_oauth2_get(
         })
         .collect();
 
-    let partial = Oauth2ListPartial { clients, can_rw };
+    let partial = Oauth2ListPartial {
+        clients,
+        can_create,
+        lock: LockState::new(uat),
+    };
     let push_url = HxPushUrl("/ui/admin/oauth2".to_string());
     Ok(if is_htmx {
         (push_url, partial).into_response()
@@ -196,7 +212,6 @@ pub(crate) async fn view_oauth2_detail_get(
     let uat: &UserAuthToken = client_auth_info
         .pre_validated_uat()
         .map_err(|op_err| HtmxError::new(&kopid, op_err, domain_info.clone()))?;
-    let can_rw = uat_privileges_active(uat);
 
     let entry: ScimEntryKanidm = state
         .qe_r_ref
@@ -260,7 +275,7 @@ pub(crate) async fn view_oauth2_detail_get(
         scope_maps,
         basic_secret,
         is_public,
-        can_rw,
+        lock: LockState::new(uat),
         groups,
         has_image,
         refresh_token_expiry,
@@ -290,8 +305,9 @@ pub(crate) async fn view_oauth2_create_get(
     let uat: &UserAuthToken = client_auth_info
         .pre_validated_uat()
         .map_err(|op_err| HtmxError::new(&kopid, op_err, domain_info.clone()))?;
-    let can_rw = uat_privileges_active(uat);
-    let partial = Oauth2CreatePartial { can_rw };
+    let partial = Oauth2CreatePartial {
+        lock: LockState::new(uat),
+    };
     let push_url = HxPushUrl("/ui/admin/oauth2/create".to_string());
     Ok(if is_htmx {
         (push_url, partial).into_response()

@@ -5,7 +5,7 @@
 (% macro string_attr(dispname, name, value, can_modify_any_attr, attribute) %)
 (% if scim_effective_access.search.check(&attribute) -%)
 <div class="row mt-2">
-    (% if can_rw && can_modify_any_attr -%)
+    (% if can_modify_any_attr -%)
     <label for="group(( name ))" class="col-12 col-md-3 col-lg-2 col-form-label fw-bold py-0 py-md-2">(( dispname ))</label>
     (% else -%)
     <label for="group(( name ))" class="col-12 col-md-3 col-lg-2 col-form-label fw-bold py-0">(( dispname ))</label>
@@ -25,11 +25,11 @@
 <nav aria-label="breadcrumb">
     <ol class="breadcrumb">
         <li class="breadcrumb-item"><a href="/ui/admin/groups" hx-target="#main">Group List</a></li>
-        <li class="breadcrumb-item active" aria-current="page">(% if can_rw %)Managing(% else %)Viewing(% endif %) Entry</li>
+        <li class="breadcrumb-item active" aria-current="page">(% if lock.can_rw %)Managing(% else %)Viewing(% endif %) Entry</li>
     </ol>
 </nav>
 
-(% include "admin/admin_unlock_banner.html" %)
+(% include "admin/admin_lock_state.html" %)
 
 <form id="user_settings_container" class="needs-validation"
       hx-post="/ui/api/admin/group/(( group.uuid ))"
@@ -39,24 +39,25 @@
       hx-ext="bs-validation"
       novalidate>
    
-    (% if can_rw -%)
-        (% if can_modify_any_attr -%)
-            <button type="submit" class="btn btn-primary">Save</button>
-        (% endif -%)
-    (% else -%)
-        <a href="/ui/unlock">
-            <button type="button" class="btn btn-secondary">Unlock Edit 🔒</button>
-        </a>
+    <fieldset (% if !lock.can_rw %)disabled(% endif %)>
+    (% if can_modify_any_attr -%)
+        <button type="submit" class="btn btn-primary">Save</button>
     (% endif -%)
 
     (% call string_attr("UUID", "uuid", group.uuid, can_modify_any_attr, Attribute::Uuid) -%)(% endcall %)
     (% call string_attr("Name", "name", group.name.clone(), can_modify_any_attr, Attribute::Name) -%)(% endcall %)
     (% let description = group.description.clone().unwrap_or(String::new()) %)
     (% call string_attr("Description", "description", description, can_modify_any_attr, Attribute::Description) -%)(% endcall %)
+    </fieldset>
 </form>
 
+/* Everything below is write controls (plus a couple of navigation links, which
+   <fieldset disabled> correctly leaves alone), so one fieldset covers the lot
+   rather than each section hiding itself independently. */
+<fieldset (% if !lock.can_rw %)disabled(% endif %)>
+
 (% if scim_effective_access.search.check(&Attribute::Member) %)
-    (% let can_edit_member = can_rw && scim_effective_access.modify_present.check(&Attribute::Member) %)
+    (% let can_edit_member = scim_effective_access.modify_present.check(&Attribute::Member) %)
     <label class="mt-2 fw-bold">Members</label>
     (% if can_edit_member %)
     <form hx-boost="true"
@@ -83,7 +84,7 @@
 (% endif %)
 
 (% if scim_effective_access.search.check(&Attribute::Mail) %)
-(% let can_edit_mail = can_rw && scim_effective_access.modify_present.check(&Attribute::Mail) %)
+(% let can_edit_mail = scim_effective_access.modify_present.check(&Attribute::Mail) %)
 <label class="mt-4 fw-bold">Emails</label>
 (% if can_edit_mail %)
 <form class="mb-2"
@@ -121,7 +122,7 @@
 (% if scim_effective_access.search.check(&Attribute::EntryManagedBy) %)
 <label class="mt-4 fw-bold">Managed by
     <span class="fw-normal text-body-secondary">(delegated admin)</span></label>
-(% if can_rw && scim_effective_access.modify_present.check(&Attribute::EntryManagedBy) %)
+(% if scim_effective_access.modify_present.check(&Attribute::EntryManagedBy) %)
 <form hx-post="/ui/api/admin/group/(( group.uuid ))/managed_by"
       hx-target=".toast-container" hx-swap="beforeend">
     <div class="input-group col-12 col-md-8 col-lg-6">
@@ -152,7 +153,6 @@
 (% endif %)
 (% endif %)
 
-(% if can_rw %)
 <label class="mt-4 fw-bold">POSIX / unix</label>
 <form hx-post="/ui/api/admin/group/(( group.uuid ))/unix_extend"
       hx-target=".toast-container" hx-swap="beforeend">
@@ -163,9 +163,8 @@
     </div>
     <div class="form-text">Adds unix/POSIX attributes so this group can be used for unix login.</div>
 </form>
-(% endif %)
 
-(% if can_rw && scim_effective_access.delete %)
+(% if scim_effective_access.delete %)
 <form class="mt-4"
       hx-post="/ui/api/admin/group/(( group.uuid ))/delete"
       hx-confirm="Delete group (( group.name ))? This cannot be undone."
@@ -174,6 +173,8 @@
     <button type="submit" class="btn btn-danger">Delete group</button>
 </form>
 (% endif %)
+
+</fieldset>
 
 <div id="toast-container" class="toast-container position-fixed bottom-0 end-0 p-3"></div>
 (% endblock %)

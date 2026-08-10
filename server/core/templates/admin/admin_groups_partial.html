@@ -10,8 +10,15 @@
     </ol>
 </nav>
 
+(% include "admin/admin_lock_state.html" %)
+
 (% if can_create %)
+(% if lock.can_rw %)
 <a href="/ui/admin/groups/create" hx-target="#main" class="btn btn-primary mb-3">＋ Create group</a>
+(% else %)
+<a class="btn btn-primary mb-3 disabled" aria-disabled="true"
+   title="Unlock your session to create a group">＋ Create group</a>
+(% endif %)
 (% endif %)
 
 <form class="mb-3" hx-get="(( base_path ))" hx-target="#main" hx-push-url="true"

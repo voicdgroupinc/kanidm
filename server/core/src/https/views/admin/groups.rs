@@ -3,7 +3,7 @@ use crate::https::extractors::{DomainInfo, VerifiedClientInformation};
 use crate::https::middleware::KOpId;
 use crate::https::views::errors::HtmxError;
 use crate::https::views::navbar::NavbarCtx;
-use crate::https::views::reauth::uat_privileges_active;
+use crate::https::views::admin::LockState;
 use crate::https::views::{ErrorToastPartial, Urls};
 use crate::https::ServerState;
 use askama::Template;
@@ -56,7 +56,9 @@ struct GroupsPartialView {
     // True when the viewer may delete groups (i.e. is a group-admin), which in
     // Kanidm's default ACPs is granted together with create. Used to hide the
     // "Create group" button from non-admins; the create itself is ACP-enforced.
+    // ACP only, NOT gated on the privilege lock — see PersonsPartialView.
     can_create: bool,
+    lock: LockState,
     pager: Pagination,
 }
 
@@ -71,7 +73,7 @@ struct GroupView {
 #[template(path = "admin/admin_group_view_partial.html")]
 struct GroupViewPartial {
     group: ScimGroup,
-    can_rw: bool,
+    lock: LockState,
     can_modify_any_attr: bool,
     scim_effective_access: ScimEffectiveAccess,
 }
@@ -104,7 +106,7 @@ struct GroupCreateView {
 #[derive(Template, WebTemplate)]
 #[template(path = "admin/admin_group_create_partial.html")]
 struct GroupCreatePartial {
-    can_rw: bool,
+    lock: LockState,
 }
 
 pub(crate) async fn view_group_view_get(
@@ -122,14 +124,13 @@ pub(crate) async fn view_group_view_get(
         .pre_validated_uat()
         .map_err(|op_err| HtmxError::new(&kopid, op_err, domain_info.clone()))?;
 
-    let can_rw = uat_privileges_active(uat);
     let can_modify_any_attr = scim_effective_access
         .modify_present
         .check_any(&std::collections::BTreeSet::from(GROUP_ATTRIBUTES));
 
     let group_partial = GroupViewPartial {
         group,
-        can_rw,
+        lock: LockState::new(uat),
         can_modify_any_attr,
         scim_effective_access,
     };
@@ -163,14 +164,15 @@ pub(crate) async fn view_groups_get(
     pager.total = total;
     let can_create = groups.iter().any(|(_, access)| access.delete);
     let push_url = HxPushUrl(format!("/ui/admin/groups{}", pager.current_qs()));
-    let groups_partial = GroupsPartialView {
-        groups,
-        can_create,
-        pager,
-    };
     let uat: &UserAuthToken = client_auth_info
         .pre_validated_uat()
         .map_err(|op_err| HtmxError::new(&kopid, op_err, domain_info.clone()))?;
+    let groups_partial = GroupsPartialView {
+        groups,
+        can_create,
+        lock: LockState::new(uat),
+        pager,
+    };
 
     Ok(if is_htmx {
         (push_url, groups_partial).into_response()
@@ -195,8 +197,9 @@ pub(crate) async fn view_group_create_get(
     let uat: &UserAuthToken = client_auth_info
         .pre_validated_uat()
         .map_err(|op_err| HtmxError::new(&kopid, op_err, domain_info.clone()))?;
-    let can_rw = uat_privileges_active(uat);
-    let partial = GroupCreatePartial { can_rw };
+    let partial = GroupCreatePartial {
+        lock: LockState::new(uat),
+    };
     let push_url = HxPushUrl("/ui/admin/groups/create".to_string());
     Ok(if is_htmx {
         (push_url, partial).into_response()
