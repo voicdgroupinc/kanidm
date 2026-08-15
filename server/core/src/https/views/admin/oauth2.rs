@@ -380,6 +380,53 @@ pub(crate) async fn create_oauth2(
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+pub(crate) struct DisplaynameForm {
+    displayname: String,
+}
+
+// Set this client's display name — the label shown on the apps listing page and
+// in this admin UI. Cosmetic only: the client_id (Attribute::Name) is what
+// integrated applications authenticate with, and is deliberately not editable
+// here. Use `kanidm system oauth2 set-name` for that, so a rename is a
+// deliberate act coordinated with updating every client that points at it.
+pub(crate) async fn set_oauth2_displayname(
+    State(state): State<ServerState>,
+    Extension(kopid): Extension<KOpId>,
+    VerifiedClientInformation(client_auth_info): VerifiedClientInformation,
+    Path(rs_name): Path<String>,
+    Form(query): Form<DisplaynameForm>,
+) -> axum::response::Result<Response> {
+    let displayname = query.displayname.trim().to_string();
+    if displayname.is_empty() {
+        return oauth2_message_toast(
+            &kopid,
+            "Display name required",
+            "Enter a display name for this client.",
+        );
+    }
+
+    match state
+        .qe_w_ref
+        .handle_setattribute(
+            client_auth_info.clone(),
+            rs_name.clone(),
+            Attribute::DisplayName.to_string(),
+            vec![displayname],
+            oauth2_class_filter(),
+            kopid.eventid,
+        )
+        .await
+    {
+        Ok(_) => Ok((oauth2_view_reload(&rs_name), "").into_response()),
+        Err(err_code) => Ok((ErrorToastPartial {
+            err_code,
+            operation_id: kopid.eventid,
+        })
+        .into_response()),
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub(crate) struct LandingForm {
     landing: String,
 }
@@ -622,8 +669,9 @@ pub(crate) async fn delete_oauth2(
 const MAX_IMAGE_UPLOAD_BYTES: usize = 256 * 1024;
 const MAX_IMAGE_UPLOAD_DIMENSION: u32 = 1024;
 
-/// Build a toast that explains an image problem in plain language.
-fn image_message_toast(
+/// Build a toast that explains a validation problem in plain language, leaving
+/// the page as it was rather than reloading it.
+fn oauth2_message_toast(
     kopid: &KOpId,
     title: &str,
     message: impl Into<String>,
@@ -654,7 +702,7 @@ async fn apply_oauth2_image(
         // already checked type + byte size in the handlers, so this is almost
         // always a dimensions/format problem — say so instead of leaking the
         // raw error code.
-        Err(OperationError::InvalidRequestState) => image_message_toast(
+        Err(OperationError::InvalidRequestState) => oauth2_message_toast(
             kopid,
             "Image rejected",
             format!(
@@ -706,14 +754,14 @@ pub(crate) async fn set_oauth2_image_upload(
             continue;
         };
         let Ok(data) = field.bytes().await else {
-            return image_message_toast(
+            return oauth2_message_toast(
                 &kopid,
                 "Upload failed",
                 "Could not read the uploaded file — it may be too large for the request.",
             );
         };
         if data.len() > MAX_IMAGE_UPLOAD_BYTES {
-            return image_message_toast(
+            return oauth2_message_toast(
                 &kopid,
                 "Image too large",
                 format!(
@@ -735,15 +783,15 @@ pub(crate) async fn set_oauth2_image_upload(
         }
         None => {
             if let Some(bad) = rejected_type {
-                image_message_toast(
+                oauth2_message_toast(
                     &kopid,
                     "Unsupported image type",
                     format!("'{bad}' isn't supported. Use PNG, JPG, GIF, SVG or WebP."),
                 )
             } else if saw_file {
-                image_message_toast(&kopid, "No image", "The selected file wasn't a valid image.")
+                oauth2_message_toast(&kopid, "No image", "The selected file wasn't a valid image.")
             } else {
-                image_message_toast(
+                oauth2_message_toast(
                     &kopid,
                     "No image selected",
                     "Choose an image file to upload.",
@@ -768,7 +816,7 @@ pub(crate) async fn set_oauth2_image_url(
 ) -> axum::response::Result<Response> {
     let url = query.url.trim().to_string();
     if !(url.starts_with("http://") || url.starts_with("https://")) {
-        return image_message_toast(
+        return oauth2_message_toast(
             &kopid,
             "Invalid URL",
             "Enter a full http:// or https:// image URL.",
@@ -779,17 +827,17 @@ pub(crate) async fn set_oauth2_image_url(
         .timeout(Duration::from_secs(10))
         .build()
     else {
-        return image_message_toast(&kopid, "Fetch failed", "Could not create an HTTP client.");
+        return oauth2_message_toast(&kopid, "Fetch failed", "Could not create an HTTP client.");
     };
     let Ok(resp) = client.get(&url).send().await else {
-        return image_message_toast(
+        return oauth2_message_toast(
             &kopid,
             "Fetch failed",
             "Could not reach that URL. Check it's correct and publicly reachable.",
         );
     };
     let Ok(resp) = resp.error_for_status() else {
-        return image_message_toast(
+        return oauth2_message_toast(
             &kopid,
             "Fetch failed",
             "The URL returned an error response.",
@@ -801,35 +849,35 @@ pub(crate) async fn set_oauth2_image_url(
         .and_then(|v| v.to_str().ok())
         .map(|s| s.split(';').next().unwrap_or(s).trim().to_string());
     let Some(content_type) = content_type else {
-        return image_message_toast(
+        return oauth2_message_toast(
             &kopid,
             "Unsupported image type",
             "The URL didn't return an image content-type. Use PNG, JPG, GIF, SVG or WebP.",
         );
     };
     if !VALID_IMAGE_UPLOAD_CONTENT_TYPES.contains(&content_type.as_str()) {
-        return image_message_toast(
+        return oauth2_message_toast(
             &kopid,
             "Unsupported image type",
             format!("'{content_type}' isn't supported. Use PNG, JPG, GIF, SVG or WebP."),
         );
     }
     let Ok(filetype) = ImageType::try_from_content_type(&content_type) else {
-        return image_message_toast(
+        return oauth2_message_toast(
             &kopid,
             "Unsupported image type",
             format!("'{content_type}' isn't supported. Use PNG, JPG, GIF, SVG or WebP."),
         );
     };
     let Ok(bytes) = resp.bytes().await else {
-        return image_message_toast(
+        return oauth2_message_toast(
             &kopid,
             "Fetch failed",
             "Could not read the image from that URL.",
         );
     };
     if bytes.len() > MAX_IMAGE_UPLOAD_BYTES {
-        return image_message_toast(
+        return oauth2_message_toast(
             &kopid,
             "Image too large",
             format!(

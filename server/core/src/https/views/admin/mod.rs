@@ -396,6 +396,10 @@ pub fn admin_api_router() -> Router<ServerState> {
             post(settings::remove_denied_name),
         )
         .route("/oauth2", post(oauth2::create_oauth2))
+        .route(
+            "/oauth2/{rs_name}/displayname",
+            post(oauth2::set_oauth2_displayname),
+        )
         .route("/oauth2/{rs_name}/landing", post(oauth2::set_oauth2_landing))
         .route(
             "/oauth2/{rs_name}/refresh_ttl",

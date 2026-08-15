@@ -26,7 +26,11 @@
         <h5 class="card-title">Client</h5>
         <fieldset (% if !lock.can_rw %)disabled(% endif %)>
         <div class="row mt-2"><label class="col-12 col-md-3 fw-bold">Client ID</label>
-            <div class="col-12 col-md-9"><code>(( name ))</code></div></div>
+            <div class="col-12 col-md-9"><code>(( name ))</code>
+                <div class="form-text">Applications authenticate with this, so it can't be changed here.
+                    Renaming it breaks every integration until each one is updated —
+                    use <code>kanidm system oauth2 set-name</code> if you need to.</div>
+            </div></div>
         (% if !is_public %)
         <div class="row mt-2"><label class="col-12 col-md-3 fw-bold">Client secret</label>
             <div class="col-12 col-md-9">
@@ -37,6 +41,18 @@
                 (% endif %)
             </div></div>
         (% endif %)
+
+        <form class="row mt-3 g-2 align-items-end"
+              hx-post="/ui/api/admin/oauth2/(( name ))/displayname"
+              hx-target=".toast-container" hx-swap="beforeend">
+            <div class="col-12 col-md-9">
+                <label class="form-label fw-bold" for="displayname">Display name
+                    <span class="fw-normal text-body-secondary">(shown to users on the apps page)</span></label>
+                <input type="text" class="form-control" id="displayname" name="displayname"
+                       value="(( displayname ))" required autocomplete="off">
+            </div>
+            <div class="col-12 col-md-3"><button class="btn btn-primary w-100" type="submit">Save</button></div>
+        </form>
 
         <form class="row mt-3 g-2 align-items-end"
               hx-post="/ui/api/admin/oauth2/(( name ))/landing"
