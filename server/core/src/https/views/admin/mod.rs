@@ -400,6 +400,10 @@ pub fn admin_api_router() -> Router<ServerState> {
             "/oauth2/{rs_name}/displayname",
             post(oauth2::set_oauth2_displayname),
         )
+        .route(
+            "/oauth2/{rs_name}/client_id",
+            post(oauth2::set_oauth2_client_id),
+        )
         .route("/oauth2/{rs_name}/landing", post(oauth2::set_oauth2_landing))
         .route(
             "/oauth2/{rs_name}/refresh_ttl",

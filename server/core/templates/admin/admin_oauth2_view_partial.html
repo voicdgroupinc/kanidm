@@ -25,12 +25,19 @@
     <div class="card-body">
         <h5 class="card-title">Client</h5>
         <fieldset (% if !lock.can_rw %)disabled(% endif %)>
-        <div class="row mt-2"><label class="col-12 col-md-3 fw-bold">Client ID</label>
-            <div class="col-12 col-md-9"><code>(( name ))</code>
-                <div class="form-text">Applications authenticate with this, so it can't be changed here.
-                    Renaming it breaks every integration until each one is updated —
-                    use <code>kanidm system oauth2 set-name</code> if you need to.</div>
-            </div></div>
+        <form class="row mt-2 g-2 align-items-end"
+              hx-post="/ui/api/admin/oauth2/(( name ))/client_id"
+              hx-confirm="Rename client ID (( name ))? Every integration that authenticates with it will fail until each one is updated with the new value."
+              hx-target=".toast-container" hx-swap="beforeend">
+            <div class="col-12 col-md-9">
+                <label class="form-label fw-bold" for="client_id">Client ID</label>
+                <input type="text" class="form-control" id="client_id" name="client_id"
+                       value="(( name ))" required autocomplete="off">
+                <div class="form-text">Applications authenticate with this. Renaming it breaks every
+                    integration until each one is updated with the new value.</div>
+            </div>
+            <div class="col-12 col-md-3"><button class="btn btn-warning w-100" type="submit">Rename</button></div>
+        </form>
         (% if !is_public %)
         <div class="row mt-2"><label class="col-12 col-md-3 fw-bold">Client secret</label>
             <div class="col-12 col-md-9">

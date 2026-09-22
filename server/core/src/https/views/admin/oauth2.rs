@@ -427,6 +427,60 @@ pub(crate) async fn set_oauth2_displayname(
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+pub(crate) struct ClientIdForm {
+    client_id: String,
+}
+
+// Rename this client's client_id (Attribute::Name). Unlike the display name this
+// is not cosmetic: integrated applications authenticate with this value, so each
+// one fails until it is reconfigured. The form carries an hx-confirm saying so,
+// and the ACP already allows it (Attribute::Name is in idm_acp_oauth2_manage's
+// modify attrs), so the only thing to get right here is the redirect — the entry
+// has moved to a new URL by the time we respond.
+pub(crate) async fn set_oauth2_client_id(
+    State(state): State<ServerState>,
+    Extension(kopid): Extension<KOpId>,
+    VerifiedClientInformation(client_auth_info): VerifiedClientInformation,
+    Path(rs_name): Path<String>,
+    Form(query): Form<ClientIdForm>,
+) -> axum::response::Result<Response> {
+    let new_name = query.client_id.trim().to_string();
+    if new_name.is_empty() {
+        return oauth2_message_toast(
+            &kopid,
+            "Client ID required",
+            "Enter a client ID for this client.",
+        );
+    }
+
+    // Unchanged: skip the write rather than spend a rename on a no-op.
+    if new_name == rs_name {
+        return Ok((oauth2_view_reload(&rs_name), "").into_response());
+    }
+
+    match state
+        .qe_w_ref
+        .handle_setattribute(
+            client_auth_info.clone(),
+            rs_name.clone(),
+            Attribute::Name.to_string(),
+            vec![new_name.clone()],
+            oauth2_class_filter(),
+            kopid.eventid,
+        )
+        .await
+    {
+        // Reload the new URL: /ui/admin/oauth2/<old>/view no longer resolves.
+        Ok(_) => Ok((oauth2_view_reload(&new_name), "").into_response()),
+        Err(err_code) => Ok((ErrorToastPartial {
+            err_code,
+            operation_id: kopid.eventid,
+        })
+        .into_response()),
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub(crate) struct LandingForm {
     landing: String,
 }
