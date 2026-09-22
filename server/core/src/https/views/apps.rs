@@ -17,16 +17,22 @@ use crate::https::{
 };
 
 /// One app tile, flattened out of `AppLink` so the template does not have to
-/// match on the enum and so the Voicd grouping fields have somewhere to live.
+/// match on the enum and so the grouping field has somewhere to live.
+///
+/// The group is the OAuth2 client's description. That is not an aesthetic
+/// choice: a dedicated attribute needs an ACP grant, and Kanidm protects every
+/// builtin entry by UUID range (access/modify.rs compares against
+/// UUID_ANONYMOUS), so no user identity can extend idm_acp_oauth2_manage on a
+/// running server - only a domain-level migration can. Description is already
+/// writable by OAuth2 admins, so grouping rides on it. There is no second
+/// writable field, which is why ordering is alphabetical rather than explicit.
 pub(crate) struct AppCard {
     name: String,
     display_name: String,
     redirect_url: String,
     has_image: bool,
-    /// Empty when the app has no group set.
+    /// Empty when the app has no description, and so no group.
     group: String,
-    /// Explicit sort position; unset sorts after everything that has one.
-    order: u32,
 }
 
 #[derive(Template, WebTemplate)]
@@ -72,28 +78,25 @@ pub(crate) async fn view_apps_get(
                 redirect_url,
                 has_image,
                 group,
-                order,
             } => AppCard {
                 name,
                 display_name,
                 redirect_url: redirect_url.to_string(),
                 has_image,
                 group: group.unwrap_or_default(),
-                order: order.unwrap_or(u32::MAX),
             },
         })
         .collect();
 
-    // Default arrangement, and the order the page falls back to without JS:
-    // grouped, ungrouped last, then explicit order, then alphabetical. Sorting
-    // here rather than in the browser means the no-JS rendering is still sane.
+    // Default arrangement, and what the page falls back to without JS: grouped,
+    // ungrouped last, alphabetical within each group. Sorting here rather than
+    // in the browser means the no-JS rendering is still sane.
     apps.sort_by(|a, b| {
         let a_ungrouped = a.group.is_empty();
         let b_ungrouped = b.group.is_empty();
         a_ungrouped
             .cmp(&b_ungrouped)
             .then_with(|| a.group.to_lowercase().cmp(&b.group.to_lowercase()))
-            .then_with(|| a.order.cmp(&b.order))
             .then_with(|| {
                 a.display_name
                     .to_lowercase()

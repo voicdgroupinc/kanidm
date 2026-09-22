@@ -417,8 +417,8 @@ pub fn admin_api_router() -> Router<ServerState> {
             post(oauth2::set_oauth2_client_id),
         )
         .route(
-            "/oauth2/{rs_name}/presentation",
-            post(oauth2::set_oauth2_presentation),
+            "/oauth2/{rs_name}/description",
+            post(oauth2::set_oauth2_description),
         )
         .route(
             "/oauth2/{rs_name}/landing",

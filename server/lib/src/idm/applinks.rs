@@ -53,11 +53,12 @@ impl IdmServerProxyReadTransaction<'_> {
 
                 let has_image = entry.get_ava_single_image(Attribute::Image).is_some();
 
+                // The apps page groups by this. It is the client's description
+                // because Kanidm's builtin ACPs cannot be extended on a running
+                // server - see the note in views/apps.rs.
                 let group = entry
-                    .get_ava_single_utf8(Attribute::VoicdAppGroup)
+                    .get_ava_single_utf8(Attribute::Description)
                     .map(str::to_string);
-
-                let order = entry.get_ava_single_uint32(Attribute::VoicdAppOrder);
 
                 Some(AppLink::Oauth2 {
                     name,
@@ -65,7 +66,6 @@ impl IdmServerProxyReadTransaction<'_> {
                     redirect_url,
                     has_image,
                     group,
-                    order,
                 })
             })
             .collect::<Vec<_>>();

@@ -177,10 +177,6 @@ pub const ATTR_OAUTH2_DEVICE_FLOW_ENABLE: &str = "oauth2_device_flow_enable";
 pub const ATTR_OAUTH2_JWT_LEGACY_CRYPTO_ENABLE: &str = "oauth2_jwt_legacy_crypto_enable";
 pub const ATTR_OAUTH2_PREFER_SHORT_USERNAME: &str = "oauth2_prefer_short_username";
 pub const ATTR_OAUTH2_REFRESH_TOKEN_EXPIRY: &str = "oauth2_refresh_token_expiry";
-// Voicd fork additions. Namespaced so they can never collide with an
-// upstream attribute name.
-pub const ATTR_VOICD_APP_GROUP: &str = "voicd_app_group";
-pub const ATTR_VOICD_APP_ORDER: &str = "voicd_app_order";
 pub const ATTR_OAUTH2_REQUEST_SCOPES: &str = "oauth2_request_scopes";
 pub const ATTR_OAUTH2_RS_BASIC_SECRET: &str = "oauth2_rs_basic_secret";
 pub const ATTR_OAUTH2_RS_CLAIM_MAP: &str = "oauth2_rs_claim_map";

@@ -28,7 +28,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::time::Duration;
 
-const OAUTH2_ATTRIBUTES: [Attribute; 11] = [
+const OAUTH2_ATTRIBUTES: [Attribute; 10] = [
     Attribute::Class,
     Attribute::Name,
     Attribute::DisplayName,
@@ -38,8 +38,7 @@ const OAUTH2_ATTRIBUTES: [Attribute; 11] = [
     Attribute::OAuth2RsScopeMap,
     Attribute::Image,
     Attribute::OAuth2RefreshTokenExpiry,
-    Attribute::VoicdAppGroup,
-    Attribute::VoicdAppOrder,
+    Attribute::Description,
 ];
 
 fn attr_string(entry: &ScimEntryKanidm, attr: &Attribute) -> String {
@@ -121,10 +120,8 @@ struct Oauth2DetailPartial {
     has_image: bool,
     // Per-app refresh-token lifetime in seconds (blank = server default).
     refresh_token_expiry: Option<String>,
-    // Apps-page presentation: heading this client groups under, and its sort
-    // position within that heading. Both optional.
-    app_group: String,
-    app_order: Option<String>,
+    // Doubles as the apps-page group heading - see set_oauth2_description.
+    description: String,
 }
 
 #[derive(Template, WebTemplate)]
@@ -274,12 +271,6 @@ pub(crate) async fn view_oauth2_detail_get(
         _ => None,
     };
 
-    let app_order = match entry.attrs.get(&Attribute::VoicdAppOrder) {
-        Some(ScimValueKanidm::Uint32(v)) => Some(v.to_string()),
-        Some(ScimValueKanidm::Integer(v)) => Some(v.to_string()),
-        _ => None,
-    };
-
     let partial = Oauth2DetailPartial {
         name: attr_string(&entry, &Attribute::Name),
         displayname: attr_string(&entry, &Attribute::DisplayName),
@@ -293,8 +284,7 @@ pub(crate) async fn view_oauth2_detail_get(
         groups,
         has_image,
         refresh_token_expiry,
-        app_group: attr_string(&entry, &Attribute::VoicdAppGroup),
-        app_order,
+        description: attr_string(&entry, &Attribute::Description),
     };
 
     let push_url = HxPushUrl(format!("/ui/admin/oauth2/{rs_name}/view"));
@@ -578,60 +568,65 @@ pub(crate) async fn set_oauth2_refresh_ttl(
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub(crate) struct PresentationForm {
-    app_group: String,
-    app_order: String,
+pub(crate) struct DescriptionForm {
+    description: String,
 }
 
-// Set how this client appears on the apps page: which heading it groups under
-// and where it sorts within that heading. Both are optional - a blank field
-// purges the attribute rather than storing an empty value, so "ungrouped" and
-// "no explicit position" stay distinguishable from "set to nothing".
-pub(crate) async fn set_oauth2_presentation(
+// Set this client's description, which is also the heading it appears under on
+// the apps page.
+//
+// Grouping rides on description rather than a dedicated attribute because
+// Kanidm protects every builtin entry by UUID range - access/modify.rs denies
+// any user identity modifying an entry whose UUID sorts below UUID_ANONYMOUS,
+// which covers all the builtin ACPs. So idm_acp_oauth2_manage cannot be
+// extended on a running server, and a custom ACP cannot be created either
+// (idm_acp_acp_manage forbids the access_control_receiver_group class). Only a
+// domain-level migration can change access control, so a new attribute would
+// have stayed unwritable until the next Kanidm minor upgrade.
+//
+// Blank clears it, which also removes the app from any group.
+pub(crate) async fn set_oauth2_description(
     State(state): State<ServerState>,
     Extension(kopid): Extension<KOpId>,
     VerifiedClientInformation(client_auth_info): VerifiedClientInformation,
     Path(rs_name): Path<String>,
-    Form(query): Form<PresentationForm>,
+    Form(query): Form<DescriptionForm>,
 ) -> axum::response::Result<Response> {
-    for (attr, value) in [
-        (Attribute::VoicdAppGroup, query.app_group.trim().to_string()),
-        (Attribute::VoicdAppOrder, query.app_order.trim().to_string()),
-    ] {
-        let result = if value.is_empty() {
-            state
-                .qe_w_ref
-                .handle_purgeattribute(
-                    client_auth_info.clone(),
-                    rs_name.clone(),
-                    attr.to_string(),
-                    oauth2_class_filter(),
-                    kopid.eventid,
-                )
-                .await
-        } else {
-            state
-                .qe_w_ref
-                .handle_setattribute(
-                    client_auth_info.clone(),
-                    rs_name.clone(),
-                    attr.to_string(),
-                    vec![value],
-                    oauth2_class_filter(),
-                    kopid.eventid,
-                )
-                .await
-        };
-        if let Err(err_code) = result {
-            return Ok((ErrorToastPartial {
-                err_code,
-                operation_id: kopid.eventid,
-            })
-            .into_response());
-        }
-    }
+    let description = query.description.trim().to_string();
 
-    Ok((oauth2_view_reload(&rs_name), "").into_response())
+    let result = if description.is_empty() {
+        state
+            .qe_w_ref
+            .handle_purgeattribute(
+                client_auth_info.clone(),
+                rs_name.clone(),
+                Attribute::Description.to_string(),
+                oauth2_class_filter(),
+                kopid.eventid,
+            )
+            .await
+    } else {
+        state
+            .qe_w_ref
+            .handle_setattribute(
+                client_auth_info.clone(),
+                rs_name.clone(),
+                Attribute::Description.to_string(),
+                vec![description],
+                oauth2_class_filter(),
+                kopid.eventid,
+            )
+            .await
+    };
+
+    match result {
+        Ok(_) => Ok((oauth2_view_reload(&rs_name), "").into_response()),
+        Err(err_code) => Ok((ErrorToastPartial {
+            err_code,
+            operation_id: kopid.eventid,
+        })
+        .into_response()),
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
