@@ -28,6 +28,10 @@
 // code. Boxing it would be a crate-wide refactor of upstream for no
 // runtime gain, and #![deny(warnings)] above makes it fatal.
 #![allow(clippy::result_large_err)]
+// Same story: create_server_core returns Result<CoreHandle, ()>, upstream's
+// public shape, consumed by server/daemon and server/testkit. Giving it a
+// real error type means changing upstream files this fork does not touch.
+#![allow(clippy::result_unit_err)]
 
 #[macro_use]
 extern crate tracing;
