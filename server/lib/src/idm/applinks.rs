@@ -53,11 +53,19 @@ impl IdmServerProxyReadTransaction<'_> {
 
                 let has_image = entry.get_ava_single_image(Attribute::Image).is_some();
 
+                let group = entry
+                    .get_ava_single_utf8(Attribute::VoicdAppGroup)
+                    .map(str::to_string);
+
+                let order = entry.get_ava_single_uint32(Attribute::VoicdAppOrder);
+
                 Some(AppLink::Oauth2 {
                     name,
                     display_name,
                     redirect_url,
                     has_image,
+                    group,
+                    order,
                 })
             })
             .collect::<Vec<_>>();
@@ -184,6 +192,7 @@ mod tests {
                 display_name,
                 redirect_url,
                 has_image,
+                ..
             } => {
                 name == "test_resource_server"
                     && display_name == "test_resource_server"

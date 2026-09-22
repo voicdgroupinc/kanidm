@@ -1,9 +1,9 @@
 use crate::https::extractors::{DomainInfo, VerifiedClientInformation};
 use crate::https::middleware::KOpId;
 use crate::https::oauth2::oauth2_id;
+use crate::https::views::admin::LockState;
 use crate::https::views::errors::HtmxError;
 use crate::https::views::navbar::NavbarCtx;
-use crate::https::views::admin::LockState;
 use crate::https::views::{ErrorToastPartial, MessageToastPartial, Urls};
 use crate::https::ServerState;
 use askama::Template;
@@ -16,7 +16,6 @@ use axum_htmx::{HxLocation, HxPushUrl, HxRequest};
 use kanidm_proto::attribute::Attribute;
 use kanidm_proto::constants::VALID_IMAGE_UPLOAD_CONTENT_TYPES;
 use kanidm_proto::internal::{CreateRequest, ImageType, ImageValue, OperationError, UserAuthToken};
-use std::time::Duration;
 use kanidm_proto::scim_v1::server::{
     ScimEntryKanidm, ScimListResponse, ScimOAuth2ScopeMap, ScimValueKanidm,
 };
@@ -25,10 +24,11 @@ use kanidm_proto::scim_v1::ScimFilter;
 use kanidm_proto::v1::Entry as ProtoEntry;
 use kanidmd_lib::constants::EntryClass;
 use kanidmd_lib::filter::{f_eq, Filter};
-use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
+use std::time::Duration;
 
-const OAUTH2_ATTRIBUTES: [Attribute; 9] = [
+const OAUTH2_ATTRIBUTES: [Attribute; 11] = [
     Attribute::Class,
     Attribute::Name,
     Attribute::DisplayName,
@@ -38,17 +38,21 @@ const OAUTH2_ATTRIBUTES: [Attribute; 9] = [
     Attribute::OAuth2RsScopeMap,
     Attribute::Image,
     Attribute::OAuth2RefreshTokenExpiry,
+    Attribute::VoicdAppGroup,
+    Attribute::VoicdAppOrder,
 ];
 
 fn attr_string(entry: &ScimEntryKanidm, attr: &Attribute) -> String {
-    match entry.attrs.get(attr) {
+    let value = entry.attrs.get(attr); // skip_route_check
+    match value {
         Some(ScimValueKanidm::String(s)) => s.clone(),
         _ => String::new(),
     }
 }
 
 fn attr_strings(entry: &ScimEntryKanidm, attr: &Attribute) -> Vec<String> {
-    match entry.attrs.get(attr) {
+    let value = entry.attrs.get(attr); // skip_route_check
+    match value {
         Some(ScimValueKanidm::ArrayString(v)) => v.clone(),
         Some(ScimValueKanidm::String(s)) => vec![s.clone()],
         _ => Vec::new(),
@@ -117,6 +121,10 @@ struct Oauth2DetailPartial {
     has_image: bool,
     // Per-app refresh-token lifetime in seconds (blank = server default).
     refresh_token_expiry: Option<String>,
+    // Apps-page presentation: heading this client groups under, and its sort
+    // position within that heading. Both optional.
+    app_group: String,
+    app_order: Option<String>,
 }
 
 #[derive(Template, WebTemplate)]
@@ -266,6 +274,12 @@ pub(crate) async fn view_oauth2_detail_get(
         _ => None,
     };
 
+    let app_order = match entry.attrs.get(&Attribute::VoicdAppOrder) {
+        Some(ScimValueKanidm::Uint32(v)) => Some(v.to_string()),
+        Some(ScimValueKanidm::Integer(v)) => Some(v.to_string()),
+        _ => None,
+    };
+
     let partial = Oauth2DetailPartial {
         name: attr_string(&entry, &Attribute::Name),
         displayname: attr_string(&entry, &Attribute::DisplayName),
@@ -279,6 +293,8 @@ pub(crate) async fn view_oauth2_detail_get(
         groups,
         has_image,
         refresh_token_expiry,
+        app_group: attr_string(&entry, &Attribute::VoicdAppGroup),
+        app_order,
     };
 
     let push_url = HxPushUrl(format!("/ui/admin/oauth2/{rs_name}/view"));
@@ -380,6 +396,107 @@ pub(crate) async fn create_oauth2(
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+pub(crate) struct DisplaynameForm {
+    displayname: String,
+}
+
+// Set this client's display name — the label shown on the apps listing page and
+// in this admin UI. Cosmetic only: the client_id (Attribute::Name) is what
+// integrated applications authenticate with, and is deliberately not editable
+// here. Use `kanidm system oauth2 set-name` for that, so a rename is a
+// deliberate act coordinated with updating every client that points at it.
+pub(crate) async fn set_oauth2_displayname(
+    State(state): State<ServerState>,
+    Extension(kopid): Extension<KOpId>,
+    VerifiedClientInformation(client_auth_info): VerifiedClientInformation,
+    Path(rs_name): Path<String>,
+    Form(query): Form<DisplaynameForm>,
+) -> axum::response::Result<Response> {
+    let displayname = query.displayname.trim().to_string();
+    if displayname.is_empty() {
+        return oauth2_message_toast(
+            &kopid,
+            "Display name required",
+            "Enter a display name for this client.",
+        );
+    }
+
+    match state
+        .qe_w_ref
+        .handle_setattribute(
+            client_auth_info.clone(),
+            rs_name.clone(),
+            Attribute::DisplayName.to_string(),
+            vec![displayname],
+            oauth2_class_filter(),
+            kopid.eventid,
+        )
+        .await
+    {
+        Ok(_) => Ok((oauth2_view_reload(&rs_name), "").into_response()),
+        Err(err_code) => Ok((ErrorToastPartial {
+            err_code,
+            operation_id: kopid.eventid,
+        })
+        .into_response()),
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub(crate) struct ClientIdForm {
+    client_id: String,
+}
+
+// Rename this client's client_id (Attribute::Name). Unlike the display name this
+// is not cosmetic: integrated applications authenticate with this value, so each
+// one fails until it is reconfigured. The form carries an hx-confirm saying so,
+// and the ACP already allows it (Attribute::Name is in idm_acp_oauth2_manage's
+// modify attrs), so the only thing to get right here is the redirect — the entry
+// has moved to a new URL by the time we respond.
+pub(crate) async fn set_oauth2_client_id(
+    State(state): State<ServerState>,
+    Extension(kopid): Extension<KOpId>,
+    VerifiedClientInformation(client_auth_info): VerifiedClientInformation,
+    Path(rs_name): Path<String>,
+    Form(query): Form<ClientIdForm>,
+) -> axum::response::Result<Response> {
+    let new_name = query.client_id.trim().to_string();
+    if new_name.is_empty() {
+        return oauth2_message_toast(
+            &kopid,
+            "Client ID required",
+            "Enter a client ID for this client.",
+        );
+    }
+
+    // Unchanged: skip the write rather than spend a rename on a no-op.
+    if new_name == rs_name {
+        return Ok((oauth2_view_reload(&rs_name), "").into_response());
+    }
+
+    match state
+        .qe_w_ref
+        .handle_setattribute(
+            client_auth_info.clone(),
+            rs_name.clone(),
+            Attribute::Name.to_string(),
+            vec![new_name.clone()],
+            oauth2_class_filter(),
+            kopid.eventid,
+        )
+        .await
+    {
+        // Reload the new URL: /ui/admin/oauth2/<old>/view no longer resolves.
+        Ok(_) => Ok((oauth2_view_reload(&new_name), "").into_response()),
+        Err(err_code) => Ok((ErrorToastPartial {
+            err_code,
+            operation_id: kopid.eventid,
+        })
+        .into_response()),
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub(crate) struct LandingForm {
     landing: String,
 }
@@ -458,6 +575,63 @@ pub(crate) async fn set_oauth2_refresh_ttl(
         })
         .into_response()),
     }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub(crate) struct PresentationForm {
+    app_group: String,
+    app_order: String,
+}
+
+// Set how this client appears on the apps page: which heading it groups under
+// and where it sorts within that heading. Both are optional - a blank field
+// purges the attribute rather than storing an empty value, so "ungrouped" and
+// "no explicit position" stay distinguishable from "set to nothing".
+pub(crate) async fn set_oauth2_presentation(
+    State(state): State<ServerState>,
+    Extension(kopid): Extension<KOpId>,
+    VerifiedClientInformation(client_auth_info): VerifiedClientInformation,
+    Path(rs_name): Path<String>,
+    Form(query): Form<PresentationForm>,
+) -> axum::response::Result<Response> {
+    for (attr, value) in [
+        (Attribute::VoicdAppGroup, query.app_group.trim().to_string()),
+        (Attribute::VoicdAppOrder, query.app_order.trim().to_string()),
+    ] {
+        let result = if value.is_empty() {
+            state
+                .qe_w_ref
+                .handle_purgeattribute(
+                    client_auth_info.clone(),
+                    rs_name.clone(),
+                    attr.to_string(),
+                    oauth2_class_filter(),
+                    kopid.eventid,
+                )
+                .await
+        } else {
+            state
+                .qe_w_ref
+                .handle_setattribute(
+                    client_auth_info.clone(),
+                    rs_name.clone(),
+                    attr.to_string(),
+                    vec![value],
+                    oauth2_class_filter(),
+                    kopid.eventid,
+                )
+                .await
+        };
+        if let Err(err_code) = result {
+            return Ok((ErrorToastPartial {
+                err_code,
+                operation_id: kopid.eventid,
+            })
+            .into_response());
+        }
+    }
+
+    Ok((oauth2_view_reload(&rs_name), "").into_response())
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -622,8 +796,9 @@ pub(crate) async fn delete_oauth2(
 const MAX_IMAGE_UPLOAD_BYTES: usize = 256 * 1024;
 const MAX_IMAGE_UPLOAD_DIMENSION: u32 = 1024;
 
-/// Build a toast that explains an image problem in plain language.
-fn image_message_toast(
+/// Build a toast that explains a validation problem in plain language, leaving
+/// the page as it was rather than reloading it.
+fn oauth2_message_toast(
     kopid: &KOpId,
     title: &str,
     message: impl Into<String>,
@@ -654,7 +829,7 @@ async fn apply_oauth2_image(
         // already checked type + byte size in the handlers, so this is almost
         // always a dimensions/format problem — say so instead of leaking the
         // raw error code.
-        Err(OperationError::InvalidRequestState) => image_message_toast(
+        Err(OperationError::InvalidRequestState) => oauth2_message_toast(
             kopid,
             "Image rejected",
             format!(
@@ -706,14 +881,14 @@ pub(crate) async fn set_oauth2_image_upload(
             continue;
         };
         let Ok(data) = field.bytes().await else {
-            return image_message_toast(
+            return oauth2_message_toast(
                 &kopid,
                 "Upload failed",
                 "Could not read the uploaded file — it may be too large for the request.",
             );
         };
         if data.len() > MAX_IMAGE_UPLOAD_BYTES {
-            return image_message_toast(
+            return oauth2_message_toast(
                 &kopid,
                 "Image too large",
                 format!(
@@ -735,15 +910,19 @@ pub(crate) async fn set_oauth2_image_upload(
         }
         None => {
             if let Some(bad) = rejected_type {
-                image_message_toast(
+                oauth2_message_toast(
                     &kopid,
                     "Unsupported image type",
                     format!("'{bad}' isn't supported. Use PNG, JPG, GIF, SVG or WebP."),
                 )
             } else if saw_file {
-                image_message_toast(&kopid, "No image", "The selected file wasn't a valid image.")
+                oauth2_message_toast(
+                    &kopid,
+                    "No image",
+                    "The selected file wasn't a valid image.",
+                )
             } else {
-                image_message_toast(
+                oauth2_message_toast(
                     &kopid,
                     "No image selected",
                     "Choose an image file to upload.",
@@ -768,7 +947,7 @@ pub(crate) async fn set_oauth2_image_url(
 ) -> axum::response::Result<Response> {
     let url = query.url.trim().to_string();
     if !(url.starts_with("http://") || url.starts_with("https://")) {
-        return image_message_toast(
+        return oauth2_message_toast(
             &kopid,
             "Invalid URL",
             "Enter a full http:// or https:// image URL.",
@@ -779,17 +958,17 @@ pub(crate) async fn set_oauth2_image_url(
         .timeout(Duration::from_secs(10))
         .build()
     else {
-        return image_message_toast(&kopid, "Fetch failed", "Could not create an HTTP client.");
+        return oauth2_message_toast(&kopid, "Fetch failed", "Could not create an HTTP client.");
     };
     let Ok(resp) = client.get(&url).send().await else {
-        return image_message_toast(
+        return oauth2_message_toast(
             &kopid,
             "Fetch failed",
             "Could not reach that URL. Check it's correct and publicly reachable.",
         );
     };
     let Ok(resp) = resp.error_for_status() else {
-        return image_message_toast(
+        return oauth2_message_toast(
             &kopid,
             "Fetch failed",
             "The URL returned an error response.",
@@ -801,35 +980,35 @@ pub(crate) async fn set_oauth2_image_url(
         .and_then(|v| v.to_str().ok())
         .map(|s| s.split(';').next().unwrap_or(s).trim().to_string());
     let Some(content_type) = content_type else {
-        return image_message_toast(
+        return oauth2_message_toast(
             &kopid,
             "Unsupported image type",
             "The URL didn't return an image content-type. Use PNG, JPG, GIF, SVG or WebP.",
         );
     };
     if !VALID_IMAGE_UPLOAD_CONTENT_TYPES.contains(&content_type.as_str()) {
-        return image_message_toast(
+        return oauth2_message_toast(
             &kopid,
             "Unsupported image type",
             format!("'{content_type}' isn't supported. Use PNG, JPG, GIF, SVG or WebP."),
         );
     }
     let Ok(filetype) = ImageType::try_from_content_type(&content_type) else {
-        return image_message_toast(
+        return oauth2_message_toast(
             &kopid,
             "Unsupported image type",
             format!("'{content_type}' isn't supported. Use PNG, JPG, GIF, SVG or WebP."),
         );
     };
     let Ok(bytes) = resp.bytes().await else {
-        return image_message_toast(
+        return oauth2_message_toast(
             &kopid,
             "Fetch failed",
             "Could not read the image from that URL.",
         );
     };
     if bytes.len() > MAX_IMAGE_UPLOAD_BYTES {
-        return image_message_toast(
+        return oauth2_message_toast(
             &kopid,
             "Image too large",
             format!(

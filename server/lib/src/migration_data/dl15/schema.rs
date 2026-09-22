@@ -570,6 +570,26 @@ pub static SCHEMA_ATTR_OAUTH2_REFRESH_TOKEN_EXPIRY: LazyLock<SchemaAttribute> =
         ..Default::default()
     });
 
+pub static SCHEMA_ATTR_VOICD_APP_GROUP: LazyLock<SchemaAttribute> =
+    LazyLock::new(|| SchemaAttribute {
+        uuid: UUID_SCHEMA_ATTR_VOICD_APP_GROUP,
+        name: Attribute::VoicdAppGroup,
+        description: "Voicd: the heading this client is grouped under on the apps page."
+            .to_string(),
+        syntax: SyntaxType::Utf8String,
+        ..Default::default()
+    });
+
+pub static SCHEMA_ATTR_VOICD_APP_ORDER: LazyLock<SchemaAttribute> =
+    LazyLock::new(|| SchemaAttribute {
+        uuid: UUID_SCHEMA_ATTR_VOICD_APP_ORDER,
+        name: Attribute::VoicdAppOrder,
+        description: "Voicd: sort position for this client on the apps page. Lower sorts first."
+            .to_string(),
+        syntax: SyntaxType::Uint32,
+        ..Default::default()
+    });
+
 pub static SCHEMA_ATTR_API_TOKEN_SESSION: LazyLock<SchemaAttribute> =
     LazyLock::new(|| SchemaAttribute {
         uuid: UUID_SCHEMA_ATTR_API_TOKEN_SESSION,
@@ -1320,6 +1340,8 @@ pub static SCHEMA_CLASS_OAUTH2_RS_DL9: LazyLock<SchemaClass> = LazyLock::new(|| 
         Attribute::OAuth2JwtLegacyCryptoEnable,
         Attribute::OAuth2PreferShortUsername,
         Attribute::OAuth2RefreshTokenExpiry,
+        Attribute::VoicdAppGroup,
+        Attribute::VoicdAppOrder,
         Attribute::Image,
         Attribute::OAuth2RsClaimMap,
         Attribute::OAuth2Session,

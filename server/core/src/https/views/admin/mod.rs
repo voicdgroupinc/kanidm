@@ -1,11 +1,11 @@
 use crate::https::middleware::KOpId;
 use crate::https::views::reauth::{uat_privileges_active, uat_privileges_possible};
 use crate::https::ServerState;
-use kanidm_proto::internal::{UatPurpose, UserAuthToken};
 use axum::routing::{get, post};
 use axum::Router;
 use axum_htmx::HxRequestGuardLayer;
 use kanidm_proto::attribute::Attribute;
+use kanidm_proto::internal::{UatPurpose, UserAuthToken};
 use kanidm_proto::scim_v1::server::{ScimListResponse, ScimValueKanidm};
 use kanidm_proto::scim_v1::{ScimEntryGetQuery, ScimFilter};
 use kanidmd_lib::constants::EntryClass;
@@ -233,14 +233,14 @@ impl Pagination {
     pub(crate) fn next_page(&self) -> u64 {
         self.page + 1
     }
-    pub(crate) fn from_row(&self) -> u64 {
+    pub(crate) fn first_row(&self) -> u64 {
         if self.total == 0 {
             0
         } else {
             self.start_index()
         }
     }
-    pub(crate) fn to_row(&self) -> u64 {
+    pub(crate) fn last_row(&self) -> u64 {
         (self.page * self.per_page).min(self.total)
     }
 
@@ -318,12 +318,18 @@ pub fn admin_api_router() -> Router<ServerState> {
         .route("/persons", post(persons::create_person))
         .route("/person/{person_uuid}", post(persons::edit_person))
         .route("/person/{person_uuid}/delete", post(persons::delete_person))
-        .route("/person/{person_uuid}/add_mail", post(persons::add_person_mail))
+        .route(
+            "/person/{person_uuid}/add_mail",
+            post(persons::add_person_mail),
+        )
         .route(
             "/person/{person_uuid}/remove_mail",
             post(persons::remove_person_mail),
         )
-        .route("/person/{person_uuid}/add_group", post(persons::add_person_group))
+        .route(
+            "/person/{person_uuid}/add_group",
+            post(persons::add_person_group),
+        )
         .route(
             "/person/{person_uuid}/remove_group",
             post(persons::remove_person_group),
@@ -344,8 +350,14 @@ pub fn admin_api_router() -> Router<ServerState> {
             "/person/{person_uuid}/clear_valid_from",
             post(persons::clear_account_valid_from),
         )
-        .route("/person/{person_uuid}/disable", post(persons::disable_account))
-        .route("/person/{person_uuid}/enable", post(persons::enable_account))
+        .route(
+            "/person/{person_uuid}/disable",
+            post(persons::disable_account),
+        )
+        .route(
+            "/person/{person_uuid}/enable",
+            post(persons::enable_account),
+        )
         .route(
             "/person/{person_uuid}/clear_lockout",
             post(persons::clear_account_lockout),
@@ -396,7 +408,22 @@ pub fn admin_api_router() -> Router<ServerState> {
             post(settings::remove_denied_name),
         )
         .route("/oauth2", post(oauth2::create_oauth2))
-        .route("/oauth2/{rs_name}/landing", post(oauth2::set_oauth2_landing))
+        .route(
+            "/oauth2/{rs_name}/displayname",
+            post(oauth2::set_oauth2_displayname),
+        )
+        .route(
+            "/oauth2/{rs_name}/client_id",
+            post(oauth2::set_oauth2_client_id),
+        )
+        .route(
+            "/oauth2/{rs_name}/presentation",
+            post(oauth2::set_oauth2_presentation),
+        )
+        .route(
+            "/oauth2/{rs_name}/landing",
+            post(oauth2::set_oauth2_landing),
+        )
         .route(
             "/oauth2/{rs_name}/refresh_ttl",
             post(oauth2::set_oauth2_refresh_ttl),

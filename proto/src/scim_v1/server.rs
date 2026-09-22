@@ -369,22 +369,22 @@ impl TryFrom<ScimEntryKanidm> for ScimPerson {
                 _ => None,
             });
 
-        let account_expire = scim_entry
-            .attrs
-            .get(&Attribute::AccountExpire)
-            .and_then(|v| match v {
-                ScimValueKanidm::DateTime(dt) => Some(*dt),
-                _ => None,
-            });
-
-        let account_valid_from =
+        let account_expire =
             scim_entry
                 .attrs
-                .get(&Attribute::AccountValidFrom)
+                .get(&Attribute::AccountExpire)
                 .and_then(|v| match v {
                     ScimValueKanidm::DateTime(dt) => Some(*dt),
                     _ => None,
                 });
+
+        let account_valid_from = scim_entry
+            .attrs
+            .get(&Attribute::AccountValidFrom)
+            .and_then(|v| match v {
+                ScimValueKanidm::DateTime(dt) => Some(*dt),
+                _ => None,
+            });
 
         let ssh_publickeys = scim_entry
             .attrs
