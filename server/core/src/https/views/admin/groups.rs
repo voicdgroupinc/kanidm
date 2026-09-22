@@ -1,14 +1,14 @@
+use super::{ListParams, Pagination};
 use crate::https::errors::WebError;
 use crate::https::extractors::{DomainInfo, VerifiedClientInformation};
 use crate::https::middleware::KOpId;
+use crate::https::views::admin::LockState;
 use crate::https::views::errors::HtmxError;
 use crate::https::views::navbar::NavbarCtx;
-use crate::https::views::admin::LockState;
 use crate::https::views::{ErrorToastPartial, Urls};
 use crate::https::ServerState;
 use askama::Template;
 use askama_web::WebTemplate;
-use super::{ListParams, Pagination};
 use axum::extract::{Path, Query, State};
 use axum::response::{IntoResponse, Response};
 use axum::Extension;
@@ -22,7 +22,6 @@ use kanidm_proto::scim_v1::server::{
 };
 use kanidm_proto::scim_v1::ScimEntryGetQuery;
 use kanidm_proto::scim_v1::{client::ScimEntryPutKanidm, JsonValue, ScimFilter, ScimSortOrder};
-use std::num::NonZeroU64;
 use kanidm_proto::v1::Entry as ProtoEntry;
 use kanidm_proto::v1::GroupUnixExtend;
 use kanidmd_lib::constants::EntryClass;
@@ -30,6 +29,7 @@ use kanidmd_lib::filter::{f_eq, f_id, Filter};
 use kanidmd_lib::idm::authentication::ClientAuthInfo;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use std::num::NonZeroU64;
 use uuid::Uuid;
 
 pub const GROUP_ATTRIBUTES: [Attribute; 7] = [
@@ -720,9 +720,7 @@ pub(crate) async fn group_unix_extend(
     Form(query): Form<GroupUnixForm>,
 ) -> axum::response::Result<Response> {
     // Blank/invalid gidnumber -> None, letting the server allocate one.
-    let gidnumber = query
-        .gidnumber
-        .and_then(|s| s.trim().parse::<u32>().ok());
+    let gidnumber = query.gidnumber.and_then(|s| s.trim().parse::<u32>().ok());
     let gx = GroupUnixExtend { gidnumber };
     match state
         .qe_w_ref

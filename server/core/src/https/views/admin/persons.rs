@@ -1,14 +1,14 @@
+use super::{ListParams, Pagination};
 use crate::https::errors::WebError;
 use crate::https::extractors::{DomainInfo, VerifiedClientInformation};
 use crate::https::middleware::KOpId;
+use crate::https::views::admin::LockState;
 use crate::https::views::errors::HtmxError;
 use crate::https::views::navbar::NavbarCtx;
-use crate::https::views::admin::LockState;
 use crate::https::views::{ErrorToastPartial, Urls};
 use crate::https::ServerState;
 use askama::Template;
 use askama_web::WebTemplate;
-use super::{ListParams, Pagination};
 use axum::extract::{Path, Query, State};
 use axum::response::{IntoResponse, Response};
 use axum::Extension;
@@ -22,13 +22,13 @@ use kanidm_proto::scim_v1::server::{
 };
 use kanidm_proto::scim_v1::ScimEntryGetQuery;
 use kanidm_proto::scim_v1::{JsonValue, ScimFilter, ScimSortOrder};
-use std::num::NonZeroU64;
 use kanidm_proto::v1::Entry as ProtoEntry;
 use kanidmd_lib::constants::EntryClass;
 use kanidmd_lib::filter::{f_eq, f_id, Filter};
 use kanidmd_lib::idm::authentication::ClientAuthInfo;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use std::num::NonZeroU64;
 use time::format_description::well_known::Rfc3339;
 use time::{OffsetDateTime, UtcOffset};
 use uuid::Uuid;
@@ -137,6 +137,8 @@ pub(crate) async fn view_person_view_get(
     let lock = LockState::new(uat);
 
     // Derive a human-facing account status from the validity window.
+    #[allow(clippy::disallowed_methods)]
+    // Display only - picks which status badge to render, never stored.
     let now = OffsetDateTime::now_utc();
     let (account_status, account_status_class) =
         match (person.account_valid_from, person.account_expire) {
@@ -148,8 +150,12 @@ pub(crate) async fn view_person_view_get(
     let valid_from_input = person.account_valid_from.map(dt_to_input);
     // ACP only — the privilege lock is applied by the template's <fieldset>, so
     // these sections stay laid out (disabled) instead of vanishing when locked.
-    let can_edit_validity = scim_effective_access.modify_present.check(&Attribute::AccountExpire);
-    let can_edit_ssh = scim_effective_access.modify_present.check(&Attribute::SshPublicKey);
+    let can_edit_validity = scim_effective_access
+        .modify_present
+        .check(&Attribute::AccountExpire);
+    let can_edit_ssh = scim_effective_access
+        .modify_present
+        .check(&Attribute::SshPublicKey);
 
     // Build the add-to-group dropdown: all groups minus the ones already joined.
     let member_uuids: std::collections::BTreeSet<Uuid> =
@@ -764,6 +770,9 @@ pub(crate) async fn disable_account(
     VerifiedClientInformation(client_auth_info): VerifiedClientInformation,
     Path(person_uuid): Path<Uuid>,
 ) -> axum::response::Result<Response> {
+    #[allow(clippy::disallowed_methods)]
+    // "Disable now" stamps account_expire with the wall clock. A view handler
+    // has no injected clock, and the value is the current instant by definition.
     let now = OffsetDateTime::now_utc()
         .format(&Rfc3339)
         .unwrap_or_else(|_| "1970-01-01T00:00:00Z".to_string());

@@ -397,10 +397,8 @@ pub const UUID_SCHEMA_ATTR_OAUTH2_REFRESH_TOKEN_EXPIRY: Uuid =
 // Voicd fork additions. Allocated in the ffff0000f0xx range, well clear of
 // upstream's sequential ffff000002xx allocation, so a future upstream
 // attribute can never take these UUIDs.
-pub const UUID_SCHEMA_ATTR_VOICD_APP_GROUP: Uuid =
-    uuid!("00000000-0000-0000-0000-ffff0000f001");
-pub const UUID_SCHEMA_ATTR_VOICD_APP_ORDER: Uuid =
-    uuid!("00000000-0000-0000-0000-ffff0000f002");
+pub const UUID_SCHEMA_ATTR_VOICD_APP_GROUP: Uuid = uuid!("00000000-0000-0000-0000-ffff0000f001");
+pub const UUID_SCHEMA_ATTR_VOICD_APP_ORDER: Uuid = uuid!("00000000-0000-0000-0000-ffff0000f002");
 pub const UUID_SCHEMA_ATTR_OAUTH2_ACCOUNT_UNIQUE_USER_SUB: Uuid =
     uuid!("00000000-0000-0000-0000-ffff00000226");
 pub const UUID_SCHEMA_ATTR_OAUTH2_TOKEN_INTROSPECT_ENDPOINT: Uuid =

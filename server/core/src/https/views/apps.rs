@@ -94,7 +94,11 @@ pub(crate) async fn view_apps_get(
             .cmp(&b_ungrouped)
             .then_with(|| a.group.to_lowercase().cmp(&b.group.to_lowercase()))
             .then_with(|| a.order.cmp(&b.order))
-            .then_with(|| a.display_name.to_lowercase().cmp(&b.display_name.to_lowercase()))
+            .then_with(|| {
+                a.display_name
+                    .to_lowercase()
+                    .cmp(&b.display_name.to_lowercase())
+            })
     });
 
     let has_groups = apps.iter().any(|a| !a.group.is_empty());

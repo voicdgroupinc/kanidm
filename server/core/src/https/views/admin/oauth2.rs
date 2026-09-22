@@ -1,9 +1,9 @@
 use crate::https::extractors::{DomainInfo, VerifiedClientInformation};
 use crate::https::middleware::KOpId;
 use crate::https::oauth2::oauth2_id;
+use crate::https::views::admin::LockState;
 use crate::https::views::errors::HtmxError;
 use crate::https::views::navbar::NavbarCtx;
-use crate::https::views::admin::LockState;
 use crate::https::views::{ErrorToastPartial, MessageToastPartial, Urls};
 use crate::https::ServerState;
 use askama::Template;
@@ -16,7 +16,6 @@ use axum_htmx::{HxLocation, HxPushUrl, HxRequest};
 use kanidm_proto::attribute::Attribute;
 use kanidm_proto::constants::VALID_IMAGE_UPLOAD_CONTENT_TYPES;
 use kanidm_proto::internal::{CreateRequest, ImageType, ImageValue, OperationError, UserAuthToken};
-use std::time::Duration;
 use kanidm_proto::scim_v1::server::{
     ScimEntryKanidm, ScimListResponse, ScimOAuth2ScopeMap, ScimValueKanidm,
 };
@@ -25,8 +24,9 @@ use kanidm_proto::scim_v1::ScimFilter;
 use kanidm_proto::v1::Entry as ProtoEntry;
 use kanidmd_lib::constants::EntryClass;
 use kanidmd_lib::filter::{f_eq, Filter};
-use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
+use std::time::Duration;
 
 const OAUTH2_ATTRIBUTES: [Attribute; 11] = [
     Attribute::Class,
@@ -796,6 +796,11 @@ const MAX_IMAGE_UPLOAD_DIMENSION: u32 = 1024;
 
 /// Build a toast that explains a validation problem in plain language, leaving
 /// the page as it was rather than reloading it.
+#[allow(clippy::result_large_err)]
+// Deliberately mirrors the handler return type so callers can `return` this
+// directly. The Err variant is axum's own ErrorResponse and is never
+// constructed here - this helper only ever returns Ok. The lint fires because
+// this is a plain fn; the async handlers with the same signature are exempt.
 fn oauth2_message_toast(
     kopid: &KOpId,
     title: &str,
@@ -914,7 +919,11 @@ pub(crate) async fn set_oauth2_image_upload(
                     format!("'{bad}' isn't supported. Use PNG, JPG, GIF, SVG or WebP."),
                 )
             } else if saw_file {
-                oauth2_message_toast(&kopid, "No image", "The selected file wasn't a valid image.")
+                oauth2_message_toast(
+                    &kopid,
+                    "No image",
+                    "The selected file wasn't a valid image.",
+                )
             } else {
                 oauth2_message_toast(
                     &kopid,

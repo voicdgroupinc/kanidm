@@ -1,8 +1,8 @@
 use crate::https::extractors::{DomainInfo, VerifiedClientInformation};
 use crate::https::middleware::KOpId;
+use crate::https::views::admin::LockState;
 use crate::https::views::errors::HtmxError;
 use crate::https::views::navbar::NavbarCtx;
-use crate::https::views::admin::LockState;
 use crate::https::views::{ErrorToastPartial, Urls};
 use crate::https::ServerState;
 use askama::Template;
@@ -33,7 +33,8 @@ const DOMAIN_ATTRIBUTES: [Attribute; 3] = [
 const SYSTEM_ATTRIBUTES: [Attribute; 2] = [Attribute::BadlistPassword, Attribute::DeniedName];
 
 // Global account-policy attributes (on idm_all_accounts, applies to everyone).
-const POLICY_ATTRIBUTES: [Attribute; 2] = [Attribute::AuthSessionExpiry, Attribute::PrivilegeExpiry];
+const POLICY_ATTRIBUTES: [Attribute; 2] =
+    [Attribute::AuthSessionExpiry, Attribute::PrivilegeExpiry];
 
 fn attr_uint(entry: &ScimEntryKanidm, attr: &Attribute) -> String {
     match entry.attrs.get(attr) {
@@ -95,7 +96,6 @@ pub(crate) async fn view_settings_get(
     let uat: &UserAuthToken = client_auth_info
         .pre_validated_uat()
         .map_err(|op_err| HtmxError::new(&kopid, op_err, domain_info.clone()))?;
-
 
     // Read each config entry independently; a caller lacking access to one section
     // (e.g. not in idm_domain_admins) must still get a working page for the rest.
