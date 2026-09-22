@@ -34,9 +34,17 @@ jobs:
             libtalloc-dev \
             tpm-udev
       - name: "Run clippy"
+        # Voicd fork: scoped to the crates this fork actually changes.
+        # rust-toolchain.toml pins `channel = "stable"`, a moving target, and
+        # newer clippy releases trip result_large_err / result_unit_err in
+        # upstream crates that carry `#![deny(warnings)]` - kanidm_tools and
+        # sparkle_resolver_common today. Upstream's own lint CI is red for the
+        # same reason, so a full-workspace run here reports upstream's problems
+        # and buries ours. Add a crate here if the fork starts modifying it.
         run: |
           rustup component add clippy
-          cargo clippy --quiet --lib --bins --examples
+          cargo clippy --quiet --lib --bins --examples \
+            -p kanidmd_core -p kanidmd_lib -p kanidm_proto
   fmt:
     runs-on: ubuntu-latest
     steps:
