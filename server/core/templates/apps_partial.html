@@ -1,33 +1,197 @@
 <main class="container-lg">
-	<div>
-		<h2>Applications</h2>
+	<div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+		<h2 class="mb-0">Applications</h2>
+		/* Hidden until the script runs, so a no-JS browser is not offered
+		   controls that cannot do anything. */
+		<div class="d-flex flex-wrap align-items-center gap-3" id="apps-controls" hidden>
+			(% if has_groups %)
+			<div class="form-check form-switch mb-0">
+				<input class="form-check-input" type="checkbox" role="switch" id="apps-groupby" checked>
+				<label class="form-check-label" for="apps-groupby">Group</label>
+			</div>
+			(% endif %)
+			<div class="d-flex align-items-center gap-1">
+				<label class="form-label mb-0 text-body-secondary" for="apps-sort">Sort</label>
+				<select class="form-select form-select-sm w-auto" id="apps-sort">
+					<option value="custom">Set order</option>
+					<option value="alpha">A&ndash;Z</option>
+				</select>
+			</div>
+			<div class="d-flex align-items-center gap-1">
+				<label class="form-label mb-0 text-body-secondary" for="apps-size">Icons</label>
+				<select class="form-select form-select-sm w-auto" id="apps-size">
+					<option value="72">Small</option>
+					<option value="104">Medium</option>
+					<option value="144">Large</option>
+				</select>
+			</div>
+		</div>
 	</div>
 	<hr />
 	(% if apps.is_empty() %)
 	<p>No linked applications available</p>
 	(% else %)
-	<div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 g-3">
-		(% for app in apps %)
-		<div class="col-md-3">
-			<div class="card text-center">
-				(% match app %)
-				(% when AppLink::Oauth2 with { name, display_name, redirect_url, has_image }
-				%)
-				<a href="(( redirect_url ))" target="_blank" rel="noopener" class="link-emphasis stretched-link mt-2">
-					(% if has_image %)
-					<img src="/ui/images/oauth2/(( name ))" class="oauth2-img"
-						alt="((display_name)) icon" id="(( name ))">
-					(% else %)
-					<img
-						src="/pkg/img/icon-oauth2.svg?v=((crate::https::cache_buster::get_cache_buster_key()))"
-						class="oauth2-img" alt="missing-icon icon" id="(( name ))">
-					(% endif %)
-				</a>
-				<label for="(( name ))">(( display_name ))</label>
-				(% endmatch %)
+	<div id="apps-render" class="apps-render">
+		<div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 g-3">
+			(% for app in apps %)
+			<div class="col app-card" data-group="(( app.group ))" data-order="(( app.order ))"
+				data-name="(( app.display_name ))">
+				<div class="card text-center h-100">
+					<a href="(( app.redirect_url ))" target="_blank" rel="noopener"
+						class="link-emphasis stretched-link mt-2">
+						(% if app.has_image %)
+						<img src="/ui/images/oauth2/(( app.name ))" class="oauth2-img"
+							alt="(( app.display_name )) icon" id="(( app.name ))">
+						(% else %)
+						<img src="/pkg/img/icon-oauth2.svg?v=((crate::https::cache_buster::get_cache_buster_key()))"
+							class="oauth2-img" alt="missing-icon icon" id="(( app.name ))">
+						(% endif %)
+					</a>
+					<label for="(( app.name ))">(( app.display_name ))</label>
+				</div>
 			</div>
+			(% endfor %)
 		</div>
-		(% endfor %)
 	</div>
 	(% endif %)
 </main>
+
+<style>
+	/* Icon size is a viewer preference, applied as a variable on the container
+	   so one property change resizes every tile. More specific than the base
+	   .oauth2-img rule in style.css, which fixes height to 100%. */
+	.apps-render .oauth2-img {
+		height: var(--app-icon-size, 104px);
+		max-height: var(--app-icon-size, 104px);
+		width: auto;
+		object-fit: contain;
+	}
+</style>
+
+<script>
+	// Grouping, sort order and icon size are per-viewer presentation choices,
+	// remembered in this browser only. The server already renders a sensible
+	// grouped-and-ordered default, so everything here is an enhancement: with
+	// JS off the list still renders, in order, with working links.
+	(function () {
+		var render = document.getElementById('apps-render');
+		if (!render) return;
+		var controls = document.getElementById('apps-controls');
+		var groupToggle = document.getElementById('apps-groupby');
+		var sortSel = document.getElementById('apps-sort');
+		var sizeSel = document.getElementById('apps-size');
+		if (!controls || !sortSel || !sizeSel) return;
+
+		// localStorage throws in some privacy modes; never let that break the page.
+		function load(key, fallback) {
+			try {
+				var v = localStorage.getItem(key);
+				return v === null ? fallback : v;
+			} catch (e) {
+				return fallback;
+			}
+		}
+		function save(key, value) {
+			try {
+				localStorage.setItem(key, value);
+			} catch (e) { /* not fatal, the choice just will not persist */ }
+		}
+
+		var cards = Array.prototype.slice.call(render.querySelectorAll('.app-card'));
+
+		function newRow() {
+			var row = document.createElement('div');
+			row.className = 'row row-cols-1 row-cols-sm-2 row-cols-md-3 g-3';
+			return row;
+		}
+
+		function byName(a, b) {
+			return a.dataset.name.toLowerCase().localeCompare(b.dataset.name.toLowerCase());
+		}
+
+		function sorted(list, mode) {
+			return list.slice().sort(function (a, b) {
+				if (mode === 'alpha') return byName(a, b);
+				var ao = parseInt(a.dataset.order, 10);
+				var bo = parseInt(b.dataset.order, 10);
+				if (ao !== bo) return ao - bo;
+				return byName(a, b);
+			});
+		}
+
+		function heading(text) {
+			var h = document.createElement('h5');
+			h.className = 'mt-4 mb-2 text-body-secondary';
+			h.textContent = text;
+			return h;
+		}
+
+		function draw() {
+			var mode = sortSel.value;
+			var grouped = groupToggle ? groupToggle.checked : false;
+			render.textContent = '';
+
+			if (!grouped) {
+				var flat = newRow();
+				sorted(cards, mode).forEach(function (c) { flat.appendChild(c); });
+				render.appendChild(flat);
+				return;
+			}
+
+			var order = [];
+			var byGroup = {};
+			cards.forEach(function (c) {
+				var g = c.dataset.group || '';
+				if (!Object.prototype.hasOwnProperty.call(byGroup, g)) {
+					byGroup[g] = [];
+					order.push(g);
+				}
+				byGroup[g].push(c);
+			});
+			// Ungrouped apps sort last, under "Other" - but only when there is
+			// something to distinguish them from.
+			order.sort(function (a, b) {
+				if (!a) return 1;
+				if (!b) return -1;
+				return a.toLowerCase().localeCompare(b.toLowerCase());
+			});
+			order.forEach(function (g) {
+				if (g) {
+					render.appendChild(heading(g));
+				} else if (order.length > 1) {
+					render.appendChild(heading('Other'));
+				}
+				var row = newRow();
+				sorted(byGroup[g], mode).forEach(function (c) { row.appendChild(c); });
+				render.appendChild(row);
+			});
+		}
+
+		function applySize() {
+			render.style.setProperty('--app-icon-size', sizeSel.value + 'px');
+		}
+
+		if (groupToggle) groupToggle.checked = load('voicd.apps.groupby', '1') === '1';
+		sortSel.value = load('voicd.apps.sort', 'custom');
+		sizeSel.value = load('voicd.apps.size', '104');
+
+		if (groupToggle) {
+			groupToggle.addEventListener('change', function () {
+				save('voicd.apps.groupby', groupToggle.checked ? '1' : '0');
+				draw();
+			});
+		}
+		sortSel.addEventListener('change', function () {
+			save('voicd.apps.sort', sortSel.value);
+			draw();
+		});
+		sizeSel.addEventListener('change', function () {
+			save('voicd.apps.size', sizeSel.value);
+			applySize();
+		});
+
+		controls.hidden = false;
+		applySize();
+		draw();
+	})();
+</script>

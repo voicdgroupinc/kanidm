@@ -251,7 +251,12 @@ fn search_oauth2_filter_entry(
                         Attribute::Uuid,
                         Attribute::Name,
                         Attribute::OAuth2RsOriginLanding,
-                        Attribute::Image
+                        Attribute::Image,
+                        // Voicd: presentation only — the apps page groups and
+                        // orders by these, so every user who can see the app
+                        // must be able to read them.
+                        Attribute::VoicdAppGroup,
+                        Attribute::VoicdAppOrder
                     ),
                 };
             }
