@@ -21,6 +21,13 @@
 #![deny(clippy::needless_pass_by_value)]
 #![deny(clippy::trivially_copy_pass_by_ref)]
 #![deny(clippy::indexing_slicing)]
+// Voicd fork: every handler in the HTTP layer returns
+// axum::response::Result<Response>, whose Err variant is axum's own
+// ErrorResponse at 128 bytes. clippy 1.98 started reporting that as
+// result_large_err on all 95 of them, two thirds in upstream's own view
+// code. Boxing it would be a crate-wide refactor of upstream for no
+// runtime gain, and #![deny(warnings)] above makes it fatal.
+#![allow(clippy::result_large_err)]
 
 #[macro_use]
 extern crate tracing;

@@ -798,11 +798,6 @@ const MAX_IMAGE_UPLOAD_DIMENSION: u32 = 1024;
 
 /// Build a toast that explains a validation problem in plain language, leaving
 /// the page as it was rather than reloading it.
-#[allow(clippy::result_large_err)]
-// Deliberately mirrors the handler return type so callers can `return` this
-// directly. The Err variant is axum's own ErrorResponse and is never
-// constructed here - this helper only ever returns Ok. The lint fires because
-// this is a plain fn; the async handlers with the same signature are exempt.
 fn oauth2_message_toast(
     kopid: &KOpId,
     title: &str,
