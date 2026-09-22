@@ -43,14 +43,16 @@ const OAUTH2_ATTRIBUTES: [Attribute; 11] = [
 ];
 
 fn attr_string(entry: &ScimEntryKanidm, attr: &Attribute) -> String {
-    match entry.attrs.get(attr) {
+    let value = entry.attrs.get(attr); // skip_route_check
+    match value {
         Some(ScimValueKanidm::String(s)) => s.clone(),
         _ => String::new(),
     }
 }
 
 fn attr_strings(entry: &ScimEntryKanidm, attr: &Attribute) -> Vec<String> {
-    match entry.attrs.get(attr) {
+    let value = entry.attrs.get(attr); // skip_route_check
+    match value {
         Some(ScimValueKanidm::ArrayString(v)) => v.clone(),
         Some(ScimValueKanidm::String(s)) => vec![s.clone()],
         _ => Vec::new(),
