@@ -11,13 +11,6 @@
 			</div>
 			(% endif %)
 			<div class="d-flex align-items-center gap-1">
-				<label class="form-label mb-0 text-body-secondary" for="apps-sort">Sort</label>
-				<select class="form-select form-select-sm w-auto" id="apps-sort">
-					<option value="custom">Set order</option>
-					<option value="alpha">A&ndash;Z</option>
-				</select>
-			</div>
-			<div class="d-flex align-items-center gap-1">
 				<label class="form-label mb-0 text-body-secondary" for="apps-size">Icons</label>
 				<select class="form-select form-select-sm w-auto" id="apps-size">
 					<option value="72">Small</option>
@@ -34,8 +27,7 @@
 	<div id="apps-render" class="apps-render">
 		<div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 g-3">
 			(% for app in apps %)
-			<div class="col app-card" data-group="(( app.group ))" data-order="(( app.order ))"
-				data-name="(( app.display_name ))">
+			<div class="col app-card" data-group="(( app.group ))" data-name="(( app.display_name ))">
 				<div class="card text-center h-100">
 					<a href="(( app.redirect_url ))" target="_blank" rel="noopener"
 						class="link-emphasis stretched-link mt-2">
@@ -78,9 +70,8 @@
 		if (!render) return;
 		var controls = document.getElementById('apps-controls');
 		var groupToggle = document.getElementById('apps-groupby');
-		var sortSel = document.getElementById('apps-sort');
 		var sizeSel = document.getElementById('apps-size');
-		if (!controls || !sortSel || !sizeSel) return;
+		if (!controls || !sizeSel) return;
 
 		// localStorage throws in some privacy modes; never let that break the page.
 		function load(key, fallback) {
@@ -109,14 +100,8 @@
 			return a.dataset.name.toLowerCase().localeCompare(b.dataset.name.toLowerCase());
 		}
 
-		function sorted(list, mode) {
-			return list.slice().sort(function (a, b) {
-				if (mode === 'alpha') return byName(a, b);
-				var ao = parseInt(a.dataset.order, 10);
-				var bo = parseInt(b.dataset.order, 10);
-				if (ao !== bo) return ao - bo;
-				return byName(a, b);
-			});
+		function sorted(list) {
+			return list.slice().sort(byName);
 		}
 
 		function heading(text) {
@@ -127,13 +112,12 @@
 		}
 
 		function draw() {
-			var mode = sortSel.value;
 			var grouped = groupToggle ? groupToggle.checked : false;
 			render.textContent = '';
 
 			if (!grouped) {
 				var flat = newRow();
-				sorted(cards, mode).forEach(function (c) { flat.appendChild(c); });
+				sorted(cards).forEach(function (c) { flat.appendChild(c); });
 				render.appendChild(flat);
 				return;
 			}
@@ -162,7 +146,7 @@
 					render.appendChild(heading('Other'));
 				}
 				var row = newRow();
-				sorted(byGroup[g], mode).forEach(function (c) { row.appendChild(c); });
+				sorted(byGroup[g]).forEach(function (c) { row.appendChild(c); });
 				render.appendChild(row);
 			});
 		}
@@ -172,7 +156,6 @@
 		}
 
 		if (groupToggle) groupToggle.checked = load('voicd.apps.groupby', '1') === '1';
-		sortSel.value = load('voicd.apps.sort', 'custom');
 		sizeSel.value = load('voicd.apps.size', '104');
 
 		if (groupToggle) {
@@ -181,10 +164,6 @@
 				draw();
 			});
 		}
-		sortSel.addEventListener('change', function () {
-			save('voicd.apps.sort', sortSel.value);
-			draw();
-		});
 		sizeSel.addEventListener('change', function () {
 			save('voicd.apps.size', sizeSel.value);
 			applySize();

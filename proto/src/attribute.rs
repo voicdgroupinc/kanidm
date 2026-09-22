@@ -210,8 +210,6 @@ pub enum Attribute {
     UserPassword,
     Uuid,
     Version,
-    VoicdAppGroup,
-    VoicdAppOrder,
     WebauthnAttestationCaList,
     AllowPrimaryCredFallback,
 
@@ -486,8 +484,6 @@ impl Attribute {
             Attribute::UserPassword => ATTR_USERPASSWORD,
             Attribute::Uuid => ATTR_UUID,
             Attribute::Version => ATTR_VERSION,
-            Attribute::VoicdAppGroup => ATTR_VOICD_APP_GROUP,
-            Attribute::VoicdAppOrder => ATTR_VOICD_APP_ORDER,
             Attribute::WebauthnAttestationCaList => ATTR_WEBAUTHN_ATTESTATION_CA_LIST,
 
             #[cfg(any(debug_assertions, test, feature = "test"))]
@@ -714,8 +710,6 @@ impl Attribute {
             ATTR_USERPASSWORD => Attribute::UserPassword,
             ATTR_UUID => Attribute::Uuid,
             ATTR_VERSION => Attribute::Version,
-            ATTR_VOICD_APP_GROUP => Attribute::VoicdAppGroup,
-            ATTR_VOICD_APP_ORDER => Attribute::VoicdAppOrder,
             ATTR_WEBAUTHN_ATTESTATION_CA_LIST => Attribute::WebauthnAttestationCaList,
 
             #[cfg(any(debug_assertions, test, feature = "test"))]

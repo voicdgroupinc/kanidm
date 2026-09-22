@@ -23,8 +23,6 @@ pub fn phase_1_schema_attrs() -> Vec<SchemaAttribute> {
         SCHEMA_ATTR_ACCOUNT_EXPIRE.clone(),
         SCHEMA_ATTR_ACCOUNT_VALID_FROM.clone(),
         SCHEMA_ATTR_API_TOKEN_SESSION.clone(),
-        SCHEMA_ATTR_VOICD_APP_GROUP.clone(),
-        SCHEMA_ATTR_VOICD_APP_ORDER.clone(),
         SCHEMA_ATTR_AUTH_SESSION_EXPIRY.clone(),
         SCHEMA_ATTR_AUTH_PRIVILEGE_EXPIRY.clone(),
         SCHEMA_ATTR_AUTH_PASSWORD_MINIMUM_LENGTH.clone(),

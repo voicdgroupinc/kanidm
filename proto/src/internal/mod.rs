@@ -42,10 +42,9 @@ pub enum AppLink {
         redirect_url: Url,
         // Whether this oauth2 resource has an image.
         has_image: bool,
-        // Voicd: heading this app is grouped under on the apps page.
+        // Voicd: heading this app is grouped under on the apps page. Sourced
+        // from the client's description - see server/lib/src/idm/applinks.rs.
         group: Option<String>,
-        // Voicd: explicit sort position; None sorts after everything ordered.
-        order: Option<u32>,
     },
 }
 
