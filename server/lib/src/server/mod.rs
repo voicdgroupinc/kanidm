@@ -2625,6 +2625,14 @@ impl<'a> QueryServerWriteTransaction<'a> {
             return Err(OperationError::MG0001InvalidReMigrationLevel);
         }
 
+        // Voicd fork: see migrate_domain_patch_level_3.
+        if previous_patch_level < PATCH_LEVEL_3
+            && domain_info_patch_level >= PATCH_LEVEL_3
+            && domain_info_version == DOMAIN_LEVEL_1_11
+        {
+            self.migrate_domain_patch_level_3()?;
+        }
+
         // Commented as an example of patch application
         /*
         if previous_patch_level < PATCH_LEVEL_2

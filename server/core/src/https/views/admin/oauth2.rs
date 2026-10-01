@@ -24,11 +24,13 @@ use kanidm_proto::scim_v1::ScimFilter;
 use kanidm_proto::v1::Entry as ProtoEntry;
 use kanidmd_lib::constants::EntryClass;
 use kanidmd_lib::filter::{f_eq, Filter};
+use kanidmd_lib::idm::authentication::ClientAuthInfo;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use std::num::NonZeroU64;
 use std::time::Duration;
 
-const OAUTH2_ATTRIBUTES: [Attribute; 10] = [
+const OAUTH2_ATTRIBUTES: [Attribute; 11] = [
     Attribute::Class,
     Attribute::Name,
     Attribute::DisplayName,
@@ -39,6 +41,7 @@ const OAUTH2_ATTRIBUTES: [Attribute; 10] = [
     Attribute::Image,
     Attribute::OAuth2RefreshTokenExpiry,
     Attribute::Description,
+    Attribute::VoicdAppGroup,
 ];
 
 fn attr_string(entry: &ScimEntryKanidm, attr: &Attribute) -> String {
@@ -76,6 +79,57 @@ fn oauth2_view_reload(rs_name: &str) -> HxLocation {
 struct Oauth2Row {
     name: String,
     displayname: String,
+    // Apps-page group; empty when ungrouped.
+    app_group: String,
+}
+
+// The distinct apps-page groups in use, for the Group field's suggestions.
+// Case-insensitive, because "Dev" and "dev" would otherwise become two
+// headings on /ui/apps; the first spelling seen wins.
+fn distinct_app_groups<'a>(groups: impl Iterator<Item = &'a str>) -> Vec<String> {
+    let mut seen: BTreeMap<String, String> = BTreeMap::new();
+    for group in groups.filter(|g| !g.is_empty()) {
+        seen.entry(group.to_lowercase())
+            .or_insert_with(|| group.to_string());
+    }
+    seen.into_values().collect()
+}
+
+// Every apps-page group already set on a client, for the create and detail
+// forms. Best effort: a failed search just means no suggestions.
+async fn list_app_groups(
+    state: &ServerState,
+    kopid: &KOpId,
+    client_auth_info: &ClientAuthInfo,
+) -> Vec<String> {
+    let filter = ScimFilter::Equal(
+        Attribute::Class.into(),
+        EntryClass::OAuth2ResourceServer.into(),
+    );
+    let res = state
+        .qe_r_ref
+        .scim_entry_search(
+            client_auth_info.clone(),
+            kopid.eventid,
+            filter,
+            ScimEntryGetQuery {
+                attributes: Some(vec![Attribute::VoicdAppGroup]),
+                count: NonZeroU64::new(1000),
+                ..Default::default()
+            },
+        )
+        .await;
+    match res {
+        Ok(base) => {
+            let groups: Vec<String> = base
+                .resources
+                .iter()
+                .map(|e| attr_string(e, &Attribute::VoicdAppGroup))
+                .collect();
+            distinct_app_groups(groups.iter().map(String::as_str))
+        }
+        Err(_) => Vec::new(),
+    }
 }
 
 #[derive(Template, WebTemplate)]
@@ -89,6 +143,9 @@ struct Oauth2ListView {
 #[template(path = "admin/admin_oauth2_partial.html")]
 struct Oauth2ListPartial {
     clients: Vec<Oauth2Row>,
+    // Whether any client has a group, so the column only shows when it means
+    // something.
+    any_grouped: bool,
     // ACP-derived, like the person/group lists: the Create button stays visible
     // (disabled) while locked instead of vanishing.
     can_create: bool,
@@ -120,8 +177,11 @@ struct Oauth2DetailPartial {
     has_image: bool,
     // Per-app refresh-token lifetime in seconds (blank = server default).
     refresh_token_expiry: Option<String>,
-    // Doubles as the apps-page group heading - see set_oauth2_description.
     description: String,
+    // Heading this client appears under on /ui/apps; empty when ungrouped.
+    app_group: String,
+    // Groups already in use, offered as suggestions.
+    app_groups: Vec<String>,
 }
 
 #[derive(Template, WebTemplate)]
@@ -135,6 +195,8 @@ struct Oauth2CreateView {
 #[template(path = "admin/admin_oauth2_create_partial.html")]
 struct Oauth2CreatePartial {
     lock: LockState,
+    // Groups already in use, offered as suggestions.
+    app_groups: Vec<String>,
 }
 
 pub(crate) async fn view_oauth2_get(
@@ -158,7 +220,11 @@ pub(crate) async fn view_oauth2_get(
             kopid.eventid,
             filter,
             ScimEntryGetQuery {
-                attributes: Some(vec![Attribute::Name, Attribute::DisplayName]),
+                attributes: Some(vec![
+                    Attribute::Name,
+                    Attribute::DisplayName,
+                    Attribute::VoicdAppGroup,
+                ]),
                 sort_by: Some(Attribute::Name),
                 // Ask for effective access so can_create is an ACP fact. This list
                 // used to gate its Create button on the privilege lock, so the
@@ -177,17 +243,29 @@ pub(crate) async fn view_oauth2_get(
         .iter()
         .any(|e| e.ext_access_check.as_ref().is_some_and(|a| a.delete));
 
-    let clients: Vec<Oauth2Row> = base
+    let mut clients: Vec<Oauth2Row> = base
         .resources
         .iter()
         .map(|e| Oauth2Row {
             name: attr_string(e, &Attribute::Name),
             displayname: attr_string(e, &Attribute::DisplayName),
+            app_group: attr_string(e, &Attribute::VoicdAppGroup),
         })
         .collect();
 
+    // Same arrangement as /ui/apps: grouped clients together, ungrouped last.
+    // The search already sorted by name, and sort_by is stable.
+    clients.sort_by(|a, b| {
+        a.app_group
+            .is_empty()
+            .cmp(&b.app_group.is_empty())
+            .then_with(|| a.app_group.to_lowercase().cmp(&b.app_group.to_lowercase()))
+    });
+    let any_grouped = clients.iter().any(|c| !c.app_group.is_empty());
+
     let partial = Oauth2ListPartial {
         clients,
+        any_grouped,
         can_create,
         lock: LockState::new(uat),
     };
@@ -285,6 +363,8 @@ pub(crate) async fn view_oauth2_detail_get(
         has_image,
         refresh_token_expiry,
         description: attr_string(&entry, &Attribute::Description),
+        app_group: attr_string(&entry, &Attribute::VoicdAppGroup),
+        app_groups: list_app_groups(&state, &kopid, &client_auth_info).await,
     };
 
     let push_url = HxPushUrl(format!("/ui/admin/oauth2/{rs_name}/view"));
@@ -303,6 +383,7 @@ pub(crate) async fn view_oauth2_detail_get(
 }
 
 pub(crate) async fn view_oauth2_create_get(
+    State(state): State<ServerState>,
     HxRequest(is_htmx): HxRequest,
     Extension(kopid): Extension<KOpId>,
     VerifiedClientInformation(client_auth_info): VerifiedClientInformation,
@@ -313,6 +394,7 @@ pub(crate) async fn view_oauth2_create_get(
         .map_err(|op_err| HtmxError::new(&kopid, op_err, domain_info.clone()))?;
     let partial = Oauth2CreatePartial {
         lock: LockState::new(uat),
+        app_groups: list_app_groups(&state, &kopid, &client_auth_info).await,
     };
     let push_url = HxPushUrl("/ui/admin/oauth2/create".to_string());
     Ok(if is_htmx {
@@ -334,6 +416,8 @@ pub(crate) struct CreateOauth2Form {
     name: String,
     displayname: String,
     landing: String,
+    // Optional apps-page group.
+    app_group: Option<String>,
     // "public" for a public client, otherwise a basic (confidential) client.
     rs_type: Option<String>,
 }
@@ -364,6 +448,17 @@ pub(crate) async fn create_oauth2(
         attrs.insert(
             Attribute::OAuth2RsOriginLanding.to_string(),
             vec![query.landing],
+        );
+    }
+    if let Some(group) = query
+        .app_group
+        .as_deref()
+        .map(str::trim)
+        .filter(|g| !g.is_empty())
+    {
+        attrs.insert(
+            Attribute::VoicdAppGroup.to_string(),
+            vec![group.to_string()],
         );
     }
 
@@ -572,19 +667,7 @@ pub(crate) struct DescriptionForm {
     description: String,
 }
 
-// Set this client's description, which is also the heading it appears under on
-// the apps page.
-//
-// Grouping rides on description rather than a dedicated attribute because
-// Kanidm protects every builtin entry by UUID range - access/modify.rs denies
-// any user identity modifying an entry whose UUID sorts below UUID_ANONYMOUS,
-// which covers all the builtin ACPs. So idm_acp_oauth2_manage cannot be
-// extended on a running server, and a custom ACP cannot be created either
-// (idm_acp_acp_manage forbids the access_control_receiver_group class). Only a
-// domain-level migration can change access control, so a new attribute would
-// have stayed unwritable until the next Kanidm minor upgrade.
-//
-// Blank clears it, which also removes the app from any group.
+// Set this client's description. Blank clears it.
 pub(crate) async fn set_oauth2_description(
     State(state): State<ServerState>,
     Extension(kopid): Extension<KOpId>,
@@ -613,6 +696,61 @@ pub(crate) async fn set_oauth2_description(
                 rs_name.clone(),
                 Attribute::Description.to_string(),
                 vec![description],
+                oauth2_class_filter(),
+                kopid.eventid,
+            )
+            .await
+    };
+
+    match result {
+        Ok(_) => Ok((oauth2_view_reload(&rs_name), "").into_response()),
+        Err(err_code) => Ok((ErrorToastPartial {
+            err_code,
+            operation_id: kopid.eventid,
+        })
+        .into_response()),
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub(crate) struct AppGroupForm {
+    app_group: String,
+}
+
+// Set the heading this client appears under on /ui/apps. Blank purges the
+// attribute, leaving the app ungrouped.
+//
+// voicd_app_group is a fork attribute. On a database that was already at 1.11
+// the grant to write it arrives through domain patch level 3
+// (migrate_domain_patch_level_3); without that patch this returns AccessDenied.
+pub(crate) async fn set_oauth2_app_group(
+    State(state): State<ServerState>,
+    Extension(kopid): Extension<KOpId>,
+    VerifiedClientInformation(client_auth_info): VerifiedClientInformation,
+    Path(rs_name): Path<String>,
+    Form(query): Form<AppGroupForm>,
+) -> axum::response::Result<Response> {
+    let app_group = query.app_group.trim().to_string();
+
+    let result = if app_group.is_empty() {
+        state
+            .qe_w_ref
+            .handle_purgeattribute(
+                client_auth_info.clone(),
+                rs_name.clone(),
+                Attribute::VoicdAppGroup.to_string(),
+                oauth2_class_filter(),
+                kopid.eventid,
+            )
+            .await
+    } else {
+        state
+            .qe_w_ref
+            .handle_setattribute(
+                client_auth_info.clone(),
+                rs_name.clone(),
+                Attribute::VoicdAppGroup.to_string(),
+                vec![app_group],
                 oauth2_class_filter(),
                 kopid.eventid,
             )

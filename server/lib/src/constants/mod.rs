@@ -56,6 +56,10 @@ pub const DOMAIN_LEVEL_8: DomainVersion = 8;
 /// Deprecated as of 1.7.0
 pub const DOMAIN_LEVEL_9: DomainVersion = 9;
 pub const PATCH_LEVEL_2: u32 = 2;
+/// Voicd fork: re-applies the DL 1.11 access controls so voicd_app_group is
+/// writable on databases that were already at 1.11. See
+/// migrate_domain_patch_level_3.
+pub const PATCH_LEVEL_3: u32 = 3;
 
 /// Domain Level introduced with 1.6.0.
 /// Deprecated as of 1.8.0
@@ -91,7 +95,7 @@ pub const DOMAIN_LEVEL_1_12: DomainVersion = 16;
 // the corresponding level.
 pub const DOMAIN_TGT_LEVEL: DomainVersion = DOMAIN_LEVEL_1_11;
 // The current patch level if any out of band fixes are required.
-pub const DOMAIN_TGT_PATCH_LEVEL: u32 = PATCH_LEVEL_2;
+pub const DOMAIN_TGT_PATCH_LEVEL: u32 = PATCH_LEVEL_3;
 
 // The maximum supported domain functional level. This generally
 // represents a *future* version of the server which doesn't exist

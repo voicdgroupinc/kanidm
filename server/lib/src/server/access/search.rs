@@ -252,10 +252,9 @@ fn search_oauth2_filter_entry(
                         Attribute::Name,
                         Attribute::OAuth2RsOriginLanding,
                         Attribute::Image,
-                        // Voicd: the apps page groups by the client's
-                        // description, so every user who can see the app must
-                        // be able to read it.
-                        Attribute::Description
+                        // Voicd: the apps page groups by this, so every
+                        // user who can see the app must be able to read it.
+                        Attribute::VoicdAppGroup
                     ),
                 };
             }
