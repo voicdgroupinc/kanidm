@@ -53,11 +53,9 @@ impl IdmServerProxyReadTransaction<'_> {
 
                 let has_image = entry.get_ava_single_image(Attribute::Image).is_some();
 
-                // The apps page groups by this. It is the client's description
-                // because Kanidm's builtin ACPs cannot be extended on a running
-                // server - see the note in views/apps.rs.
+                // The heading the apps page groups this app under.
                 let group = entry
-                    .get_ava_single_utf8(Attribute::Description)
+                    .get_ava_single_utf8(Attribute::VoicdAppGroup)
                     .map(str::to_string);
 
                 Some(AppLink::Oauth2 {
@@ -115,6 +113,7 @@ mod tests {
                 Attribute::OAuth2RsOriginLanding,
                 Value::new_url_s("https://demo.example.com/landing").unwrap()
             ),
+            (Attribute::VoicdAppGroup, Value::new_utf8s("Prod")),
             // System admins
             (
                 Attribute::OAuth2RsScopeMap,
@@ -192,9 +191,10 @@ mod tests {
                 display_name,
                 redirect_url,
                 has_image,
-                ..
+                group,
             } => {
                 name == "test_resource_server"
+                    && group.as_deref() == Some("Prod")
                     && display_name == "test_resource_server"
                     && redirect_url
                         == &Url::parse("https://demo.example.com/landing")

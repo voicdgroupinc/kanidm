@@ -410,6 +410,33 @@ impl QueryServerWriteTransaction<'_> {
         }
     }
 
+    /// Voicd fork patch - re-apply the DL 1.11 builtin access controls.
+    ///
+    /// voicd_app_group is in the in-memory schema, which is rebuilt every
+    /// startup, but the grant to write it lives in idm_acp_oauth2_manage, and
+    /// builtin ACPs are only written by a domain migration. No user identity can
+    /// change them (access/modify.rs protects every UUID below UUID_ANONYMOUS),
+    /// so a database already at 1.11 would never see the new grant. A patch
+    /// level is the upstream mechanism for exactly this (see #3178 below).
+    ///
+    /// Re-applies the whole phase rather than one ACP so an existing database
+    /// ends up identical to a freshly bootstrapped one. It is idempotent.
+    #[instrument(level = "info", skip_all)]
+    pub(crate) fn migrate_domain_patch_level_3(&mut self) -> Result<(), OperationError> {
+        admin_warn!("applying domain patch 3.");
+
+        debug_assert!(*self.phase >= ServerPhase::SchemaReady);
+
+        self.internal_migrate_or_create_batch(
+            "patch 3 - builtin access control profiles",
+            migration_data::dl15::phase_7_builtin_access_control_profiles(),
+        )?;
+
+        self.reload()?;
+
+        Ok(())
+    }
+
     // Commented as an example of patch application
     /*
     /// Patch Application - This triggers a one-shot fixup task for issue #3178
@@ -1606,6 +1633,73 @@ mod tests {
 
         let entries_remain = write_txn.internal_exists(&filter).unwrap();
         assert!(!entries_remain);
+
+        write_txn.commit().expect("Unable to commit");
+    }
+    // Voicd fork: a database already at 1.11 carries an idm_acp_oauth2_manage
+    // without voicd_app_group. Patch level 3 must put the grant back.
+    #[qs_test(domain_level=DOMAIN_TGT_LEVEL)]
+    async fn test_migrations_patch_level_3_grants_app_group(server: &QueryServer) {
+        let acp_attrs = [
+            Attribute::AcpSearchAttr,
+            Attribute::AcpModifyPresentAttr,
+            Attribute::AcpModifyRemovedAttr,
+            Attribute::AcpCreateAttr,
+        ];
+
+        let has_grant = |entry: &EntrySealedCommitted| {
+            acp_attrs.iter().all(|a| {
+                entry.attribute_equality(a.clone(), &PartialValue::from(Attribute::VoicdAppGroup))
+            })
+        };
+
+        // == SETUP == wind the database back to how 1.11 patch 2 left it.
+        let mut write_txn = server.write(duration_from_epoch_now()).await.unwrap();
+
+        let modlist = ModifyList::new_list(
+            acp_attrs
+                .iter()
+                .map(|a| Modify::Removed(a.clone(), PartialValue::from(Attribute::VoicdAppGroup)))
+                .collect(),
+        );
+        write_txn
+            .internal_modify_uuid(UUID_IDM_ACP_OAUTH2_MANAGE_V1, &modlist)
+            .expect("Unable to strip voicd_app_group from the oauth2 manage acp");
+        write_txn
+            .internal_modify_uuid(
+                UUID_DOMAIN_INFO,
+                &ModifyList::new_purge_and_set(
+                    Attribute::PatchLevel,
+                    Value::new_uint32(PATCH_LEVEL_2),
+                ),
+            )
+            .expect("Unable to set patch level");
+        write_txn.commit().expect("Unable to commit");
+
+        let mut write_txn = server.write(duration_from_epoch_now()).await.unwrap();
+        let acp = write_txn
+            .internal_search_uuid(UUID_IDM_ACP_OAUTH2_MANAGE_V1)
+            .expect("Unable to retrieve the oauth2 manage acp");
+        assert!(acp
+            .get_ava_set(Attribute::AcpSearchAttr)
+            .is_some_and(|vs| !vs.contains(&PartialValue::from(Attribute::VoicdAppGroup))));
+
+        // == Raise the patch level, as startup does ==
+        write_txn
+            .internal_modify_uuid(
+                UUID_DOMAIN_INFO,
+                &ModifyList::new_purge_and_set(
+                    Attribute::PatchLevel,
+                    Value::new_uint32(PATCH_LEVEL_3),
+                ),
+            )
+            .expect("Unable to raise patch level");
+        write_txn.reload().expect("Unable to reload");
+
+        let acp = write_txn
+            .internal_search_uuid(UUID_IDM_ACP_OAUTH2_MANAGE_V1)
+            .expect("Unable to retrieve the oauth2 manage acp");
+        assert!(has_grant(&acp));
 
         write_txn.commit().expect("Unable to commit");
     }

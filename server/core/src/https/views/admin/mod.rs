@@ -421,6 +421,10 @@ pub fn admin_api_router() -> Router<ServerState> {
             post(oauth2::set_oauth2_description),
         )
         .route(
+            "/oauth2/{rs_name}/app_group",
+            post(oauth2::set_oauth2_app_group),
+        )
+        .route(
             "/oauth2/{rs_name}/landing",
             post(oauth2::set_oauth2_landing),
         )

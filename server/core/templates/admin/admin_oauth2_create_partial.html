@@ -35,6 +35,16 @@
         <div class="form-text">Where users are sent from the app launcher.</div>
     </div>
     <div class="mb-3">
+        <label for="oauth2-app-group" class="form-label fw-bold">Group
+            <span class="fw-normal text-body-secondary">(optional)</span></label>
+        <input type="text" class="form-control" id="oauth2-app-group" name="app_group"
+               autocomplete="off" list="oauth2-app-group-options" placeholder="e.g. Prod">
+        <datalist id="oauth2-app-group-options">
+            (% for g in app_groups %)<option value="(( g ))"></option>(% endfor %)
+        </datalist>
+        <div class="form-text">Heading the app appears under on the apps page.</div>
+    </div>
+    <div class="mb-3">
         <label class="form-label fw-bold d-block">Client type</label>
         <div class="form-check form-check-inline">
             <input class="form-check-input" type="radio" name="rs_type" id="rs-basic" value="basic" checked>

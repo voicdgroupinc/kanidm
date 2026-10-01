@@ -76,12 +76,27 @@
               hx-post="/ui/api/admin/oauth2/(( name ))/description"
               hx-target=".toast-container" hx-swap="beforeend">
             <div class="col-12 col-md-9">
-                <label class="form-label fw-bold" for="description">Description
-                    <span class="fw-normal text-body-secondary">(also the apps-page group)</span></label>
+                <label class="form-label fw-bold" for="description">Description</label>
                 <input type="text" class="form-control" id="description" name="description"
-                       value="(( description ))" autocomplete="off" placeholder="e.g. OpenShift">
-                <div class="form-text">Apps sharing a description appear under one heading on
-                    /ui/apps, sorted alphabetically. Blank leaves the app ungrouped.</div>
+                       value="(( description ))" autocomplete="off">
+            </div>
+            <div class="col-12 col-md-3"><button class="btn btn-primary w-100" type="submit">Save</button></div>
+        </form>
+
+        <form class="row mt-3 g-2 align-items-end"
+              hx-post="/ui/api/admin/oauth2/(( name ))/app_group"
+              hx-target=".toast-container" hx-swap="beforeend">
+            <div class="col-12 col-md-9">
+                <label class="form-label fw-bold" for="app_group">Group
+                    <span class="fw-normal text-body-secondary">(heading on the apps page)</span></label>
+                <input type="text" class="form-control" id="app_group" name="app_group"
+                       value="(( app_group ))" autocomplete="off" list="app-group-options"
+                       placeholder="e.g. Prod">
+                <datalist id="app-group-options">
+                    (% for g in app_groups %)<option value="(( g ))"></option>(% endfor %)
+                </datalist>
+                <div class="form-text">Apps sharing a group appear under one heading on
+                    /ui/apps. Blank leaves the app ungrouped.</div>
             </div>
             <div class="col-12 col-md-3"><button class="btn btn-primary w-100" type="submit">Save</button></div>
         </form>

@@ -19,19 +19,14 @@ use crate::https::{
 /// One app tile, flattened out of `AppLink` so the template does not have to
 /// match on the enum and so the grouping field has somewhere to live.
 ///
-/// The group is the OAuth2 client's description. That is not an aesthetic
-/// choice: a dedicated attribute needs an ACP grant, and Kanidm protects every
-/// builtin entry by UUID range (access/modify.rs compares against
-/// UUID_ANONYMOUS), so no user identity can extend idm_acp_oauth2_manage on a
-/// running server - only a domain-level migration can. Description is already
-/// writable by OAuth2 admins, so grouping rides on it. There is no second
-/// writable field, which is why ordering is alphabetical rather than explicit.
+/// The group comes from the client's voicd_app_group, set on
+/// /ui/admin/oauth2. Apps sort alphabetically within their group.
 pub(crate) struct AppCard {
     name: String,
     display_name: String,
     redirect_url: String,
     has_image: bool,
-    /// Empty when the app has no description, and so no group.
+    /// Empty when the app has no group.
     group: String,
 }
 

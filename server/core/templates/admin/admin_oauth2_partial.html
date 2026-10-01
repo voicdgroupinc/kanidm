@@ -29,6 +29,7 @@
         <tr>
             <th scope="col">Name</th>
             <th scope="col">Display name</th>
+            (% if any_grouped %)<th scope="col">Group</th>(% endif %)
         </tr>
     </thead>
     <tbody>
@@ -36,6 +37,9 @@
         <tr>
             <td><a href="/ui/admin/oauth2/(( client.name ))/view" hx-target="#main">(( client.name ))</a></td>
             <td>(( client.displayname ))</td>
+            (% if any_grouped %)
+            <td>(% if client.app_group.is_empty() %)<span class="text-body-secondary">&mdash;</span>(% else %)(( client.app_group ))(% endif %)</td>
+            (% endif %)
         </tr>
     (% endfor %)
     </tbody>
