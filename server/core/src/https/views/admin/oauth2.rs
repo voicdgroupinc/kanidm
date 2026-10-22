@@ -30,7 +30,7 @@ use std::collections::BTreeMap;
 use std::num::NonZeroU64;
 use std::time::Duration;
 
-const OAUTH2_ATTRIBUTES: [Attribute; 11] = [
+const OAUTH2_ATTRIBUTES: [Attribute; 12] = [
     Attribute::Class,
     Attribute::Name,
     Attribute::DisplayName,
@@ -42,6 +42,7 @@ const OAUTH2_ATTRIBUTES: [Attribute; 11] = [
     Attribute::OAuth2RefreshTokenExpiry,
     Attribute::Description,
     Attribute::VoicdAppGroup,
+    Attribute::VoicdAppHidden,
 ];
 
 fn attr_string(entry: &ScimEntryKanidm, attr: &Attribute) -> String {
@@ -50,6 +51,10 @@ fn attr_string(entry: &ScimEntryKanidm, attr: &Attribute) -> String {
         Some(ScimValueKanidm::String(s)) => s.clone(),
         _ => String::new(),
     }
+}
+
+fn attr_bool(entry: &ScimEntryKanidm, attr: &Attribute) -> bool {
+    matches!(entry.attrs.get(attr), Some(ScimValueKanidm::Bool(true))) // skip_route_check
 }
 
 fn attr_strings(entry: &ScimEntryKanidm, attr: &Attribute) -> Vec<String> {
@@ -81,6 +86,8 @@ struct Oauth2Row {
     displayname: String,
     // Apps-page group; empty when ungrouped.
     app_group: String,
+    // Left off the apps page (access unchanged).
+    app_hidden: bool,
 }
 
 // The distinct apps-page groups in use, for the Group field's suggestions.
@@ -182,6 +189,8 @@ struct Oauth2DetailPartial {
     app_group: String,
     // Groups already in use, offered as suggestions.
     app_groups: Vec<String>,
+    // Left off the apps page; users with access can still sign in.
+    app_hidden: bool,
 }
 
 #[derive(Template, WebTemplate)]
@@ -224,6 +233,7 @@ pub(crate) async fn view_oauth2_get(
                     Attribute::Name,
                     Attribute::DisplayName,
                     Attribute::VoicdAppGroup,
+                    Attribute::VoicdAppHidden,
                 ]),
                 sort_by: Some(Attribute::Name),
                 // Ask for effective access so can_create is an ACP fact. This list
@@ -250,6 +260,7 @@ pub(crate) async fn view_oauth2_get(
             name: attr_string(e, &Attribute::Name),
             displayname: attr_string(e, &Attribute::DisplayName),
             app_group: attr_string(e, &Attribute::VoicdAppGroup),
+            app_hidden: attr_bool(e, &Attribute::VoicdAppHidden),
         })
         .collect();
 
@@ -365,6 +376,7 @@ pub(crate) async fn view_oauth2_detail_get(
         description: attr_string(&entry, &Attribute::Description),
         app_group: attr_string(&entry, &Attribute::VoicdAppGroup),
         app_groups: list_app_groups(&state, &kopid, &client_auth_info).await,
+        app_hidden: attr_bool(&entry, &Attribute::VoicdAppHidden),
     };
 
     let push_url = HxPushUrl(format!("/ui/admin/oauth2/{rs_name}/view"));
@@ -751,6 +763,58 @@ pub(crate) async fn set_oauth2_app_group(
                 rs_name.clone(),
                 Attribute::VoicdAppGroup.to_string(),
                 vec![app_group],
+                oauth2_class_filter(),
+                kopid.eventid,
+            )
+            .await
+    };
+
+    match result {
+        Ok(_) => Ok((oauth2_view_reload(&rs_name), "").into_response()),
+        Err(err_code) => Ok((ErrorToastPartial {
+            err_code,
+            operation_id: kopid.eventid,
+        })
+        .into_response()),
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub(crate) struct AppHiddenForm {
+    // A checkbox: present when ticked, absent when not.
+    app_hidden: Option<String>,
+}
+
+// Show or hide this client on /ui/apps. Hiding only removes the tile - the
+// scope map still grants access, so users can sign in to the app as before.
+// Unticked purges the attribute rather than storing false, so "shown" has one
+// representation.
+pub(crate) async fn set_oauth2_app_hidden(
+    State(state): State<ServerState>,
+    Extension(kopid): Extension<KOpId>,
+    VerifiedClientInformation(client_auth_info): VerifiedClientInformation,
+    Path(rs_name): Path<String>,
+    Form(query): Form<AppHiddenForm>,
+) -> axum::response::Result<Response> {
+    let result = if query.app_hidden.is_some() {
+        state
+            .qe_w_ref
+            .handle_setattribute(
+                client_auth_info.clone(),
+                rs_name.clone(),
+                Attribute::VoicdAppHidden.to_string(),
+                vec!["true".to_string()],
+                oauth2_class_filter(),
+                kopid.eventid,
+            )
+            .await
+    } else {
+        state
+            .qe_w_ref
+            .handle_purgeattribute(
+                client_auth_info.clone(),
+                rs_name.clone(),
+                Attribute::VoicdAppHidden.to_string(),
                 oauth2_class_filter(),
                 kopid.eventid,
             )

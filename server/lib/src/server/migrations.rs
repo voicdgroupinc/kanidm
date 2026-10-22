@@ -412,8 +412,8 @@ impl QueryServerWriteTransaction<'_> {
 
     /// Voicd fork patch - re-apply the DL 1.11 builtin access controls.
     ///
-    /// voicd_app_group is in the in-memory schema, which is rebuilt every
-    /// startup, but the grant to write it lives in idm_acp_oauth2_manage, and
+    /// voicd_app_group and voicd_app_hidden are in the in-memory schema, which
+    /// is rebuilt every startup, but the grant to write them lives in idm_acp_oauth2_manage, and
     /// builtin ACPs are only written by a domain migration. No user identity can
     /// change them (access/modify.rs protects every UUID below UUID_ANONYMOUS),
     /// so a database already at 1.11 would never see the new grant. A patch
@@ -1637,7 +1637,7 @@ mod tests {
         write_txn.commit().expect("Unable to commit");
     }
     // Voicd fork: a database already at 1.11 carries an idm_acp_oauth2_manage
-    // without voicd_app_group. Patch level 3 must put the grant back.
+    // without the voicd_app_* attributes. Patch level 3 must put the grants back.
     #[qs_test(domain_level=DOMAIN_TGT_LEVEL)]
     async fn test_migrations_patch_level_3_grants_app_group(server: &QueryServer) {
         let acp_attrs = [
@@ -1647,9 +1647,13 @@ mod tests {
             Attribute::AcpCreateAttr,
         ];
 
+        let voicd_attrs = [Attribute::VoicdAppGroup, Attribute::VoicdAppHidden];
+
         let has_grant = |entry: &EntrySealedCommitted| {
             acp_attrs.iter().all(|a| {
-                entry.attribute_equality(a.clone(), &PartialValue::from(Attribute::VoicdAppGroup))
+                voicd_attrs
+                    .iter()
+                    .all(|v| entry.attribute_equality(a.clone(), &PartialValue::from(v.clone())))
             })
         };
 
@@ -1659,12 +1663,16 @@ mod tests {
         let modlist = ModifyList::new_list(
             acp_attrs
                 .iter()
-                .map(|a| Modify::Removed(a.clone(), PartialValue::from(Attribute::VoicdAppGroup)))
+                .flat_map(|a| {
+                    voicd_attrs
+                        .iter()
+                        .map(|v| Modify::Removed(a.clone(), PartialValue::from(v.clone())))
+                })
                 .collect(),
         );
         write_txn
             .internal_modify_uuid(UUID_IDM_ACP_OAUTH2_MANAGE_V1, &modlist)
-            .expect("Unable to strip voicd_app_group from the oauth2 manage acp");
+            .expect("Unable to strip the voicd_app_* grants from the oauth2 manage acp");
         write_txn
             .internal_modify_uuid(
                 UUID_DOMAIN_INFO,
@@ -1682,7 +1690,10 @@ mod tests {
             .expect("Unable to retrieve the oauth2 manage acp");
         assert!(acp
             .get_ava_set(Attribute::AcpSearchAttr)
-            .is_some_and(|vs| !vs.contains(&PartialValue::from(Attribute::VoicdAppGroup))));
+            .is_some_and(
+                |vs| !vs.contains(&PartialValue::from(Attribute::VoicdAppGroup))
+                    && !vs.contains(&PartialValue::from(Attribute::VoicdAppHidden))
+            ));
 
         // == Raise the patch level, as startup does ==
         write_txn

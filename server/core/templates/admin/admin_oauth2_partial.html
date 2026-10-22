@@ -36,7 +36,9 @@
     (% for client in clients %)
         <tr>
             <td><a href="/ui/admin/oauth2/(( client.name ))/view" hx-target="#main">(( client.name ))</a></td>
-            <td>(( client.displayname ))</td>
+            <td>(( client.displayname ))
+                (% if client.app_hidden %)<span class="badge text-bg-secondary ms-1"
+                    title="Not shown on the apps page; access is unchanged">Hidden</span>(% endif %)</td>
             (% if any_grouped %)
             <td>(% if client.app_group.is_empty() %)<span class="text-body-secondary">&mdash;</span>(% else %)(( client.app_group ))(% endif %)</td>
             (% endif %)

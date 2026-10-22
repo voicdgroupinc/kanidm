@@ -252,9 +252,11 @@ fn search_oauth2_filter_entry(
                         Attribute::Name,
                         Attribute::OAuth2RsOriginLanding,
                         Attribute::Image,
-                        // Voicd: the apps page groups by this, so every
-                        // user who can see the app must be able to read it.
-                        Attribute::VoicdAppGroup
+                        // Voicd: the apps page groups by the first and
+                        // skips apps flagged with the second, so every user
+                        // who can see the app must be able to read them.
+                        Attribute::VoicdAppGroup,
+                        Attribute::VoicdAppHidden
                     ),
                 };
             }

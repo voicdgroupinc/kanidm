@@ -578,9 +578,10 @@ pub static IDM_ACP_OAUTH2_MANAGE: LazyLock<BuiltinAcp> = LazyLock::new(|| Builti
         Attribute::OAuth2JwtLegacyCryptoEnable,
         Attribute::OAuth2PreferShortUsername,
         Attribute::OAuth2RefreshTokenExpiry,
-        // Voicd: apps-page group. Reaches existing databases via
-        // migrate_domain_patch_level_3.
+        // Voicd: apps-page group and visibility. Reach existing databases
+        // via migrate_domain_patch_level_3.
         Attribute::VoicdAppGroup,
+        Attribute::VoicdAppHidden,
         Attribute::OAuth2AllowLocalhostRedirect,
         Attribute::OAuth2RsClaimMap,
         Attribute::Image,
@@ -602,9 +603,10 @@ pub static IDM_ACP_OAUTH2_MANAGE: LazyLock<BuiltinAcp> = LazyLock::new(|| Builti
         Attribute::OAuth2JwtLegacyCryptoEnable,
         Attribute::OAuth2PreferShortUsername,
         Attribute::OAuth2RefreshTokenExpiry,
-        // Voicd: apps-page group. Reaches existing databases via
-        // migrate_domain_patch_level_3.
+        // Voicd: apps-page group and visibility. Reach existing databases
+        // via migrate_domain_patch_level_3.
         Attribute::VoicdAppGroup,
+        Attribute::VoicdAppHidden,
         Attribute::OAuth2AllowLocalhostRedirect,
         Attribute::OAuth2RsClaimMap,
         Attribute::Image,
@@ -625,9 +627,10 @@ pub static IDM_ACP_OAUTH2_MANAGE: LazyLock<BuiltinAcp> = LazyLock::new(|| Builti
         Attribute::OAuth2JwtLegacyCryptoEnable,
         Attribute::OAuth2PreferShortUsername,
         Attribute::OAuth2RefreshTokenExpiry,
-        // Voicd: apps-page group. Reaches existing databases via
-        // migrate_domain_patch_level_3.
+        // Voicd: apps-page group and visibility. Reach existing databases
+        // via migrate_domain_patch_level_3.
         Attribute::VoicdAppGroup,
+        Attribute::VoicdAppHidden,
         Attribute::OAuth2AllowLocalhostRedirect,
         Attribute::OAuth2RsClaimMap,
         Attribute::Image,
@@ -650,9 +653,10 @@ pub static IDM_ACP_OAUTH2_MANAGE: LazyLock<BuiltinAcp> = LazyLock::new(|| Builti
         Attribute::OAuth2JwtLegacyCryptoEnable,
         Attribute::OAuth2PreferShortUsername,
         Attribute::OAuth2RefreshTokenExpiry,
-        // Voicd: apps-page group. Reaches existing databases via
-        // migrate_domain_patch_level_3.
+        // Voicd: apps-page group and visibility. Reach existing databases
+        // via migrate_domain_patch_level_3.
         Attribute::VoicdAppGroup,
+        Attribute::VoicdAppHidden,
         Attribute::OAuth2AllowLocalhostRedirect,
         Attribute::OAuth2RsClaimMap,
         Attribute::Image,

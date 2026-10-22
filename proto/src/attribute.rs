@@ -211,6 +211,7 @@ pub enum Attribute {
     Uuid,
     Version,
     VoicdAppGroup,
+    VoicdAppHidden,
     WebauthnAttestationCaList,
     AllowPrimaryCredFallback,
 
@@ -486,6 +487,7 @@ impl Attribute {
             Attribute::Uuid => ATTR_UUID,
             Attribute::Version => ATTR_VERSION,
             Attribute::VoicdAppGroup => ATTR_VOICD_APP_GROUP,
+            Attribute::VoicdAppHidden => ATTR_VOICD_APP_HIDDEN,
             Attribute::WebauthnAttestationCaList => ATTR_WEBAUTHN_ATTESTATION_CA_LIST,
 
             #[cfg(any(debug_assertions, test, feature = "test"))]
@@ -713,6 +715,7 @@ impl Attribute {
             ATTR_UUID => Attribute::Uuid,
             ATTR_VERSION => Attribute::Version,
             ATTR_VOICD_APP_GROUP => Attribute::VoicdAppGroup,
+            ATTR_VOICD_APP_HIDDEN => Attribute::VoicdAppHidden,
             ATTR_WEBAUTHN_ATTESTATION_CA_LIST => Attribute::WebauthnAttestationCaList,
 
             #[cfg(any(debug_assertions, test, feature = "test"))]
