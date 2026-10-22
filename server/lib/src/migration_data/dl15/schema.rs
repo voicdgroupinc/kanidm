@@ -580,6 +580,17 @@ pub static SCHEMA_ATTR_VOICD_APP_GROUP: LazyLock<SchemaAttribute> =
         ..Default::default()
     });
 
+pub static SCHEMA_ATTR_VOICD_APP_HIDDEN: LazyLock<SchemaAttribute> =
+    LazyLock::new(|| SchemaAttribute {
+        uuid: UUID_SCHEMA_ATTR_VOICD_APP_HIDDEN,
+        name: Attribute::VoicdAppHidden,
+        description:
+            "Voicd: when true, this client is left off the apps page. Access is unchanged."
+                .to_string(),
+        syntax: SyntaxType::Boolean,
+        ..Default::default()
+    });
+
 pub static SCHEMA_ATTR_API_TOKEN_SESSION: LazyLock<SchemaAttribute> =
     LazyLock::new(|| SchemaAttribute {
         uuid: UUID_SCHEMA_ATTR_API_TOKEN_SESSION,
@@ -1331,6 +1342,7 @@ pub static SCHEMA_CLASS_OAUTH2_RS_DL9: LazyLock<SchemaClass> = LazyLock::new(|| 
         Attribute::OAuth2PreferShortUsername,
         Attribute::OAuth2RefreshTokenExpiry,
         Attribute::VoicdAppGroup,
+        Attribute::VoicdAppHidden,
         Attribute::Image,
         Attribute::OAuth2RsClaimMap,
         Attribute::OAuth2Session,

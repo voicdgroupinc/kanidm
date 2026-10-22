@@ -172,6 +172,20 @@ nav a.navbar-brand {
   height: 100%;
 }
 
+/* Apps page icon size. A viewer preference: apps.js sets --app-icon-size on
+   the container, so one property change resizes every tile. */
+.apps-render .oauth2-img {
+  height: var(--app-icon-size, 104px);
+  max-height: var(--app-icon-size, 104px);
+  width: auto;
+  object-fit: contain;
+}
+
+/* The fixed 150px link height would clip the Large size. */
+.apps-render .card > a {
+  height: auto;
+}
+
 .btn-tiny {
   --bs-btn-padding-y: 0.05rem;
   --bs-btn-padding-x: 0.4rem;

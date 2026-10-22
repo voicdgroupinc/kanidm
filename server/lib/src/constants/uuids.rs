@@ -394,10 +394,12 @@ pub const UUID_SCHEMA_ATTR_DOMAIN_ALLOW_ACCOUNT_RECOVERY: Uuid =
     uuid!("00000000-0000-0000-0000-ffff00000224");
 pub const UUID_SCHEMA_ATTR_OAUTH2_REFRESH_TOKEN_EXPIRY: Uuid =
     uuid!("00000000-0000-0000-0000-ffff00000225");
-// Voicd fork addition. Allocated in the ffff0000f0xx range, well clear of
+// Voicd fork additions. Allocated in the ffff0000f0xx range, well clear of
 // upstream's sequential ffff000002xx allocation, so a future upstream
-// attribute can never take this UUID.
+// attribute can never take these UUIDs. f002 is skipped: ARCH-707's
+// voicd_app_order briefly held it.
 pub const UUID_SCHEMA_ATTR_VOICD_APP_GROUP: Uuid = uuid!("00000000-0000-0000-0000-ffff0000f001");
+pub const UUID_SCHEMA_ATTR_VOICD_APP_HIDDEN: Uuid = uuid!("00000000-0000-0000-0000-ffff0000f003");
 pub const UUID_SCHEMA_ATTR_OAUTH2_ACCOUNT_UNIQUE_USER_SUB: Uuid =
     uuid!("00000000-0000-0000-0000-ffff00000226");
 pub const UUID_SCHEMA_ATTR_OAUTH2_TOKEN_INTROSPECT_ENDPOINT: Uuid =

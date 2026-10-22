@@ -56,8 +56,8 @@ pub const DOMAIN_LEVEL_8: DomainVersion = 8;
 /// Deprecated as of 1.7.0
 pub const DOMAIN_LEVEL_9: DomainVersion = 9;
 pub const PATCH_LEVEL_2: u32 = 2;
-/// Voicd fork: re-applies the DL 1.11 access controls so voicd_app_group is
-/// writable on databases that were already at 1.11. See
+/// Voicd fork: re-applies the DL 1.11 access controls so voicd_app_group and
+/// voicd_app_hidden are writable on databases that were already at 1.11. See
 /// migrate_domain_patch_level_3.
 pub const PATCH_LEVEL_3: u32 = 3;
 

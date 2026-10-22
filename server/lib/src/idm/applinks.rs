@@ -39,6 +39,12 @@ impl IdmServerProxyReadTransaction<'_> {
         let apps = oauth2_related
             .iter()
             .filter_map(|entry| {
+                // Hidden only from the apps page; the scope map still grants
+                // access, so the user can sign in to it as before.
+                if entry.get_ava_single_bool(Attribute::VoicdAppHidden) == Some(true) {
+                    return None;
+                }
+
                 let display_name = entry
                     .get_ava_single_utf8(Attribute::DisplayName)
                     .map(str::to_string)?;
@@ -201,6 +207,34 @@ mod tests {
                             .expect("Failed to parse URL")
                     && !has_image
             } // _ => false,
-        })
+        });
+
+        drop(idms_prox_read);
+
+        // Hide it from the apps page. The user keeps access, but the link goes.
+        let mut idms_prox_write = idms.proxy_write(ct).await.unwrap();
+        let me_hide = ModifyEvent::new_internal_invalid(
+            filter!(f_eq(
+                Attribute::Name,
+                PartialValue::new_iname("test_resource_server")
+            )),
+            ModifyList::new_purge_and_set(Attribute::VoicdAppHidden, Value::new_bool(true)),
+        );
+        assert!(idms_prox_write.qs_write.modify(&me_hide).is_ok());
+        assert!(idms_prox_write.commit().is_ok());
+
+        let mut idms_prox_read = idms.proxy_read().await.unwrap();
+
+        let ident = idms_prox_read
+            .qs_read
+            .internal_search_uuid(usr_uuid)
+            .map(Identity::from_impersonate_entry_readonly)
+            .expect("Failed to impersonate identity");
+
+        let apps = idms_prox_read
+            .list_applinks(&ident)
+            .expect("Failed to access related apps");
+
+        assert!(apps.is_empty());
     }
 }
